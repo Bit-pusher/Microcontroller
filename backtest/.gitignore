@@ -1,0 +1,6 @@
+data/
+cache/
+results/
+harness/runner
+harness/indicator.cpp
+__pycache__/
