@@ -80,7 +80,8 @@ def load_bars(source, hours):
 
 def run_indicator(bars, key, params):
     os.makedirs(CACHE, exist_ok=True)
-    tag = hashlib.md5((key + json.dumps(params, sort_keys=True) + str(os.path.getmtime(INDICATOR))).encode()).hexdigest()[:12]
+    content = pd.util.hash_pandas_object(bars[["time", "bid_o", "bid_h", "bid_l", "bid_c"]], index=False).to_numpy().tobytes()
+    tag = hashlib.md5((key + json.dumps(params, sort_keys=True) + str(os.path.getmtime(INDICATOR))).encode() + content).hexdigest()[:12]
     out = os.path.join(CACHE, f"{key}_{tag}.csv")
     if not os.path.exists(out):
         src = os.path.join(CACHE, f"{key}_bars.csv")

@@ -90,6 +90,38 @@ Weitere Befunde:
 - Gegen einen einfachen SuperTrend mit gleichem Zeitrahmen, gleicher Richtung und gleichem Faktor
   gewinnt die KNN-Variante Out-of-Sample in 101 von 192 Vergleichen, also etwa wie ein Münzwurf.
 
+## Ergebnis 3: Vergleich mit bekannten Indikatoren
+
+`compare.py` (`python3 compare.py`, nach `backtest.py`) testet zehn verbreitete Regeln mit
+Lehrbuchparametern unter denselben Bedingungen wie oben: gleiche Märkte, Kosten und
+In-Sample/Out-of-Sample-Zeiträume, jeweils Long+Short und nur Long. Tagesbars für FX und Gold
+enden um 17:00 New Yorker Zeit. Ausgewählt wird wieder nach dem mittleren In-Sample-Sharpe.
+
+Portfolio aus allen vier Märkten zu gleichen Teilen, Out-of-Sample (6,7 Jahre), beste Seite je Regel:
+
+| Regel | Sharpe In-Sample | CAGR | max. DD | Sharpe | t-Wert |
+|---|---|---|---|---|---|
+| AI-SuperTrend KNN (gewählte Regel, nur Long) | 0,55 | 1,5 % | −8,0 % | 0,35 | 0,9 |
+| Donchian 20/10 (D1, nur Long) | 0,43 | 0,9 % | −6,9 % | 0,30 | 0,8 |
+| Buy & Hold | 0,44 | 1,8 % | −15,3 % | 0,30 | 0,8 |
+| Bollinger 20/2 Rückkehr (H4, Long+Short) | −0,35 | 1,3 % | −13,5 % | 0,28 | 0,7 |
+| SMA 200 (D1, nur Long), In-Sample gewählt | 0,69 | 0,9 % | −7,6 % | 0,24 | 0,6 |
+| SuperTrend 10/3 (D1, nur Long) | 0,62 | 0,7 % | −10,0 % | 0,18 | 0,5 |
+| Golden Cross 50/200 (D1, nur Long) | 0,69 | 0,6 % | −10,2 % | 0,15 | 0,4 |
+| RSI(2) mit SMA-200-Filter (D1, nur Long) | 0,46 | 0,2 % | −5,9 % | 0,13 | 0,3 |
+| MACD 12/26/9 (D1, nur Long) | 0,42 | 0,3 % | −9,6 % | 0,08 | 0,2 |
+| Donchian 55/20 (D1, nur Long) | 0,27 | 0,1 % | −8,1 % | 0,06 | 0,2 |
+| Momentum 12 Monate (D1, nur Long) | 0,33 | 0,0 % | −10,4 % | 0,03 | 0,1 |
+| Bollinger 20/2 Rückkehr (H1, Long+Short) | −1,24 | −3,7 % | −25,0 % | −0,78 | −2,0 |
+
+- Keine Regel ist belastbar besser als der AI-SuperTrend oder als Buy & Hold: Alle t-Werte liegen
+  unter 1, die Unterschiede sind Zufall. Nur die Bollinger-Rückkehr auf H1 ist deutlich negativ
+  (die Spreads bei rund einem Trade pro Tag).
+- Die In-Sample beste Regel (SMA 200, nur Long) fällt von 0,69 auf 0,24.
+- Gemeinsam ist den Long-only-Trendfiltern auf D1 (SMA 200, Donchian, SuperTrend, AI-SuperTrend):
+  Sie halbieren ungefähr den Drawdown gegenüber Buy & Hold bei ähnlichem oder etwas niedrigerem
+  Sharpe. Das ist Risikobegrenzung, kein Renditevorteil.
+
 ## Fazit
 
 - Als eigenständiges Handelssystem (Long und Short) zeigt der Indikator auf keinem der
