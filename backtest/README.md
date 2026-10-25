@@ -122,6 +122,52 @@ Portfolio aus allen vier Märkten zu gleichen Teilen, Out-of-Sample (6,7 Jahre),
   Sie halbieren ungefähr den Drawdown gegenüber Buy & Hold bei ähnlichem oder etwas niedrigerem
   Sharpe. Das ist Risikobegrenzung, kein Renditevorteil.
 
+## Ergebnis 4: Populäre TradingView-Skripte
+
+`tradingview.py` (`python3 tradingview.py`, nach `compare.py`) testet elf viel genutzte
+Community-Skripte mit ihren Standardeinstellungen. Die Logik ist aus dem veröffentlichten
+Pine-Code übersetzt (Kopien auf GitHub, die Links stehen in `SCRIPTS`). Gehandelt wird wie in
+den Strategie-Versionen der Skripte: Ein Signal eröffnet oder dreht die Position. Zeitrahmen sind
+H4 (SPY: H1) und D1, jeweils Long+Short und nur Long, also 44 Varianten. Protokoll, Kosten und
+Zeiträume sind dieselben wie oben.
+
+- **Machine Learning: Lorentzian Classification** (jdehorty) ist hier ebenfalls selbst
+  implementiert. `check_lorentzian.py` vergleicht die Implementierung mit vier TradingView-Exporten
+  des Originals: Features, Vorhersagen und alle Kauf-/Verkaufssignale stimmen Bar für Bar überein.
+  Das Original wählt sein Trainingsfenster nach dem letzten Bar des Charts. Getestet wird
+  deshalb in Blöcken von 2.000 Bars, jeweils so, wie der Chart am Blockende ausgesehen hätte.
+- **Nicht getestet:** Smart Money Concepts (LuxAlgo) zeichnet Zonen für diskretionäres Trading und
+  hat keine mechanischen Signale. Nadaraya-Watson Envelope (LuxAlgo) zeichnet in der Standardeinstellung
+  nachträglich um. ChrisMoodys MACD-MTF entspricht auf dem Chart-Zeitrahmen dem MACD (oben getestet).
+  Für QQE MOD war kein Quellcode erreichbar.
+
+Portfolio aus allen vier Märkten, je Skript die In-Sample beste Variante, Out-of-Sample (6,7 Jahre):
+
+| Skript (gewählte Variante) | Sharpe In-Sample | Sharpe OOS | t-Wert | CAGR | max. DD |
+|---|---|---|---|---|---|
+| AlphaTrend, KivancOzbilgic (D1, nur Long) | 0,63 | 0,30 | 0,8 | 1,1 % | −9,4 % |
+| WaveTrend Oscillator, LazyBear (H4/H1, nur Long) | 0,34 | 0,32 | 0,8 | 1,5 % | −8,9 % |
+| Chandelier Exit, everget (D1, nur Long) | 0,44 | −0,01 | −0,0 | −0,1 % | −13,1 % |
+| Optimized Trend Tracker, KivancOzbilgic (H4/H1, nur Long) | 0,22 | −0,02 | −0,0 | −0,2 % | −14,2 % |
+| Hull Suite, InSilico (D1, nur Long) | 0,41 | −0,05 | −0,1 | −0,3 % | −11,1 % |
+| HalfTrend, everget (H4/H1, nur Long) | 0,32 | −0,10 | −0,3 | −0,5 % | −13,7 % |
+| Range Filter, guikroth (H4/H1, nur Long) | 0,27 | −0,18 | −0,5 | −0,9 % | −16,3 % |
+| Lorentzian Classification, jdehorty (D1, nur Long) | 0,47 | −0,21 | −0,5 | −0,3 % | −4,6 % |
+| UT Bot Alerts, QuantNomad (H4/H1, nur Long) | 0,21 | −0,21 | −0,5 | −1,0 % | −13,4 % |
+| Squeeze Momentum, LazyBear (D1, nur Long) | 0,28 | −0,26 | −0,7 | −0,8 % | −8,0 % |
+| SSL Channel (H4/H1, nur Long) | 0,47 | −0,36 | −0,9 | −1,7 % | −17,4 % |
+| *Vergleich: AI-SuperTrend KNN (gewählte Regel)* | 0,55 | 0,35 | 0,9 | 1,5 % | −8,0 % |
+| *Vergleich: Buy & Hold* | 0,44 | 0,30 | 0,8 | 1,8 % | −15,3 % |
+
+- Nach dem Protokoll (mittleres In-Sample-Sharpe) gewählt wurde die Lorentzian Classification auf D1,
+  nur Long. Out-of-Sample liegt ihr Sharpe bei −0,21.
+- 14 der 44 Varianten haben Out-of-Sample ein positives Sharpe, 4 schlagen Buy & Hold, keine mit einem
+  t-Wert über 2. Das beste Ergebnis im Nachhinein (Lorentzian, D1, Long+Short: 0,44, t 1,1) hätte man
+  vorher nicht wählen können.
+- Die Rangkorrelation zwischen In-Sample und Out-of-Sample beträgt nur 0,24: Gute Ergebnisse in den
+  ersten Jahren sagten kaum etwas über die späteren voraus.
+- Auf H4/H1 sind die meisten Skripte nach Kosten deutlich negativ (bis −0,78, t −2,0).
+
 ## Fazit
 
 - Als eigenständiges Handelssystem (Long und Short) zeigt der Indikator auf keinem der
