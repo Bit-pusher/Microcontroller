@@ -137,7 +137,7 @@ Zeiträume sind dieselben wie oben.
   Das Original wählt sein Trainingsfenster nach dem letzten Bar des Charts. Getestet wird
   deshalb in Blöcken von 2.000 Bars, jeweils so, wie der Chart am Blockende ausgesehen hätte.
 - **Nicht getestet:** Smart Money Concepts (LuxAlgo) zeichnet Zonen für diskretionäres Trading und
-  hat keine mechanischen Signale. Nadaraya-Watson Envelope (LuxAlgo) zeichnet in der Standardeinstellung
+  hat keine mechanischen Signale (daraus abgeleitete Regeln: Ergebnis 6). Nadaraya-Watson Envelope (LuxAlgo) zeichnet in der Standardeinstellung
   nachträglich um. ChrisMoodys MACD-MTF entspricht auf dem Chart-Zeitrahmen dem MACD (oben getestet).
   Für QQE MOD war kein Quellcode erreichbar.
 
@@ -200,6 +200,79 @@ Portfolio der sechs Paare zu gleichen Teilen:
   Qualität einzelner Indikatoren.
 - Die Auswahl der Paare (heute noch große Coins) bevorzugt rückblickend Buy & Hold und alle Long-Regeln.
 
+## Ergebnis 6: Smart Money Concepts (LuxAlgo)
+
+Der Indikator [Smart Money Concepts (SMC) [LuxAlgo]](https://www.tradingview.com/script/CnB3fSph-Smart-Money-Concepts-LUX/)
+erzeugt keine Einstiegs- oder Ausstiegssignale. Er zeichnet Marktstruktur (BOS und CHoCH, intern
+mit 5 Bars und als Swing mit 50 Bars), Order Blocks, gleiche Hochs/Tiefs (EQH/EQL), Fair Value Gaps,
+Strong/Weak High/Low und Premium/Discount-Zonen und meldet diese Ereignisse über 16 Alerts.
+Was man daraus handelt, bleibt dem Nutzer überlassen.
+
+`smc.py` rechnet die Logik des Pine-Skripts Bar für Bar nach (ohne Fair Value Gaps und
+Tages-/Wochen-/Monatslevels, die hier nicht gebraucht werden) und leitet daraus Positionen ab.
+`check_smc.py` vergleicht das mit dem, was das Original auf TradingView gezeichnet hat: dem Export
+aus der Parity-Testumgebung von [GeneralTradingSarl/Smart-Money-Concepts](https://github.com/GeneralTradingSarl/Smart-Money-Concepts)
+(5.044 AAPL-15-Minuten-Bars, Standardeinstellungen; geladen werden nur Daten). Alle 278 Strukturlinien
+und -labels, die 43 EQH/EQL-Linien und -Labels, Strong/Weak High/Low, die 5 angezeigten Order Blocks
+und die Trendfarbe aller 5.044 Kerzen stimmen überein (`ALL IDENTICAL`). Jedes Ereignis steht beim
+Schluss seines Bars fest; ein Swing-Punkt wird wie im Original erst 50 Bars später bestätigt.
+
+Lizenz: Das Original steht unter [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/),
+`smc.py` als abgeleitetes Werk ebenfalls (Namensnennung, nicht kommerziell, gleiche Lizenz).
+
+Abgeleitete Regeln (`smc.RULES`):
+
+| Regel | Einstieg | Ausstieg |
+|---|---|---|
+| Swing-Struktur | Long nach bullischem Swing-BOS/-CHoCH, Short nach bärischem | Gegenteiliger Swing-Bruch (immer im Markt) |
+| Interne Struktur | Ebenso mit der internen Struktur (= Kerzenfarbe des Indikators) | Gegenteiliger interner Bruch |
+| Intern + Swing gleichgerichtet | Interne Struktur in Richtung der Swing-Struktur | Sobald beide auseinanderlaufen (flach) |
+| Order-Block-Retest | Rückkehr in den jüngsten intakten internen Order Block in Swing-Richtung (Tief ≤ Oberkante, Schluss ≥ Unterkante); jeder Block nur einmal | Block gebrochen (Mitigation des Indikators: Tief unter der Unterkante) oder interner Bruch gegen die Position |
+| CHoCH im Discount/Premium | Interner bullischer CHoCH bei bullischer Swing-Struktur mit Schluss in der unteren Hälfte der Swing-Spanne; Short spiegelbildlich in der oberen Hälfte | Nächster gegenteiliger interner Bruch |
+
+`smc_test.py` (`python3 smc_test.py`, nach `backtest.py` und `fetch_crypto.py`) testet jede Regel auf
+H4 (SPY: H1) und D1, Long+Short und nur Long: 20 Varianten je Universum, mit Standardeinstellungen
+des Indikators. FX/Gold/SPY mit den Zeiträumen und Spreads von oben, Krypto mit den sechs Paaren und
+0,1 % je Seite aus Ergebnis 5. Gewählt wird wieder nach dem mittleren In-Sample-Sharpe.
+
+Portfolio, je Regel die In-Sample beste Variante, FX/Gold/SPY (Out-of-Sample 6,7 Jahre):
+
+| Regel (Variante) | Sharpe IS | Sharpe OOS | t-Wert | CAGR OOS | max. DD OOS | Trades/Jahr |
+|---|---|---|---|---|---|---|
+| Swing-Struktur (H4/H1, nur Long), gewählt | 0,44 | 0,37 | 1,0 | 1,4 % | −7,4 % | 2,4 |
+| Interne Struktur (D1, nur Long) | 0,36 | 0,29 | 0,8 | 1,1 % | −9,5 % | 3,2 |
+| Intern + Swing gleichgerichtet (H4/H1, nur Long) | 0,23 | 0,21 | 0,5 | 0,6 % | −7,9 % | 12,2 |
+| Order-Block-Retest (H4/H1, nur Long) | 0,04 | −0,25 | −0,6 | −0,6 % | −8,1 % | 13,3 |
+| CHoCH im Discount/Premium (H4/H1, Long+Short) | 0,28 | 0,13 | 0,3 | 0,2 % | −3,5 % | 3,2 |
+| *Buy & Hold* | 0,44 | 0,30 | 0,8 | 1,8 % | −15,3 % | |
+
+Krypto (Out-of-Sample 3,8 Jahre):
+
+| Regel (Variante) | Sharpe IS | Sharpe OOS | t-Wert | CAGR OOS | max. DD OOS | Trades/Jahr |
+|---|---|---|---|---|---|---|
+| Intern + Swing gleichgerichtet (H4, nur Long), gewählt | 1,62 | 0,66 | 1,3 | 15,8 % | −32,9 % | 18,3 |
+| Swing-Struktur (H4, nur Long) | 1,37 | 0,67 | 1,3 | 19,9 % | −49,2 % | 4,5 |
+| Interne Struktur (D1, nur Long) | 1,26 | 0,80 | 1,6 | 25,3 % | −43,5 % | 5,2 |
+| Order-Block-Retest (D1, nur Long) | 1,51 | −0,32 | −0,6 | −6,3 % | −29,6 % | 3,3 |
+| CHoCH im Discount/Premium (D1, nur Long) | 0,64 | 0,68 | 1,3 | 6,3 % | −9,6 % | 0,8 |
+| *Buy & Hold* | 0,97 | 0,81 | 1,6 | 35,3 % | −66,4 % | |
+
+- FX/Gold/SPY: Die gewählte Swing-Struktur (nur Long) liegt Out-of-Sample knapp über Buy & Hold
+  (0,37 gegen 0,30, t 1,0) bei halbem Drawdown und geringerer Rendite, ähnlich wie die
+  AI-SuperTrend-Regel (0,35). Der Vorteil kommt fast nur von SPY (0,83); EURUSD 0,23, NZDUSD −0,30,
+  Gold −0,15. Long+Short liegen die zehn Varianten zwischen −0,45 und 0,17, im Mittel bei −0,09.
+  2 von 20 Varianten schlagen Buy & Hold.
+- Krypto: Gewählt wurde „Intern + Swing gleichgerichtet“ (H4, nur Long), Out-of-Sample 0,66 gegen 0,81
+  für Buy & Hold, mit halbem Drawdown (−33 % statt −66 %). Keine der 20 Varianten schlägt Buy & Hold.
+- Der Order-Block-Retest, der typischste SMC-Einstieg, verliert Out-of-Sample in beiden Universen.
+  Auf Krypto D1 fällt er von 1,51 In-Sample auf −0,32 (Long+Short: −0,91, t −1,8).
+- CHoCH im Discount/Premium handelt sehr selten (EURUSD D1: vier Signale in zwölf Jahren, alle
+  In-Sample). Die Zahlen dieser Regel sind entsprechend unsicher.
+- Die Rangkorrelation zwischen In-Sample und Out-of-Sample beträgt 0,59 (FX/Gold/SPY) und
+  0,64 (Krypto). Sie kommt wieder vor allem aus „nur Long“ gegen „Long+Short“.
+- Die Struktur-Regeln verhalten sich wie andere Trendfilter (SMA 200, SuperTrend): Sie halbieren den
+  Drawdown auf steigenden Märkten, einen messbaren Vorteil nach Kosten liefern sie nicht.
+
 ## Fazit
 
 - Als eigenständiges Handelssystem (Long und Short) zeigt der Indikator auf keinem der
@@ -210,6 +283,8 @@ Portfolio der sechs Paare zu gleichen Teilen:
   (Aktienindex, Gold): Der Drawdown halbiert sich ungefähr, das Sharpe-Verhältnis bleibt
   etwa auf Buy-&-Hold-Niveau, die Rendite ist niedriger. Ein einfacher SuperTrend leistet als
   Filter ähnliches.
+- Dasselbe gilt für die aus Smart Money Concepts abgeleiteten Regeln: Die Marktstruktur taugt als
+  Long-only-Trendfilter, Einstiege an Order Blocks verlieren Out-of-Sample.
 
 ## Einschränkungen
 

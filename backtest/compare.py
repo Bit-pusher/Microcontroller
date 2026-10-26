@@ -180,7 +180,7 @@ def evaluate(pos_by_market, bars_by_market, win, costs=None):
         port = pd.concat(row["daily"][part], axis=1, sort=True).fillna(0.0).mean(axis=1)
         years = (port.index[-1] - port.index[0]).days / 365.25
         per_year = len(port) / years
-        sharpe = port.mean() / port.std() * np.sqrt(per_year)
+        sharpe = port.mean() / port.std() * np.sqrt(per_year) if port.std() > 0 else 0.0
         eq = (1 + port).cumprod()
         row[part + "_portfolio"] = {"sharpe": float(sharpe), "t": float(sharpe * np.sqrt(years)),
                                     "cagr": float(eq.iloc[-1] ** (1 / years) - 1),
