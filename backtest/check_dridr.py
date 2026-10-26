@@ -1,10 +1,17 @@
-"""Checks of dridr.py on hand-made days: levels, time zone, confirmation and trade execution.
+"""Checks of dridr.py: hand-made days, and optionally TradingView exports of the original.
 
-No TradingView export of a DR/IDR script was available, so the definitions are
-checked against cases worked out by hand instead.
+Without arguments: levels, time zone, sessions past midnight, confirmation and
+trade execution on cases worked out by hand.
 
-usage: python3 check_dridr.py
+With CSV files: exports of tradingview/DR_IDR_V1.5_export.pine ("Export chart
+data" on a 5-minute chart). The original's levels at the last bar of every
+defining hour are compared with dridr.sessions() on the exported bars, and its
+session flag with the New York time windows used here.
+
+usage: python3 check_dridr.py [export.csv ...]
 """
+import sys
+
 import numpy as np
 import pandas as pd
 
@@ -54,6 +61,13 @@ def main():
         ok &= check(f"levels {date}", (d[0]["dr_hi"], d[0]["dr_lo"], d[0]["idr_hi"], d[0]["idr_lo"]),
                     (104.0, 96.0, 102.0, 100.0))
         ok &= check(f"session bars {date}", len(d[0]["c"]), 2)
+    # the ADR runs past midnight: 19:30-20:30 New York defines it (23:30 UTC in summer), lines until 02:00
+    rows = ([(100, 101, 99, 100)] + [(100, 103, 97, 101)] * 12 + [(100, 101, 99, 100)] * 66
+            + [(100, 130, 70, 100)])
+    d = dr.sessions(dr.prepare(bars_for("2017-06-05", "23:25", rows)), "ADR")
+    ok &= check("ADR day", str(d[0]["date"].date()), "2017-06-05")
+    ok &= check("ADR levels", (d[0]["dr_hi"], d[0]["dr_lo"], d[0]["idr_hi"], d[0]["idr_lo"]), (103.0, 97.0, 101.0, 100.0))
+    ok &= check("ADR session bars (20:30-02:00)", len(d[0]["c"]), 66)
 
     # first close beyond the DR decides; a close beyond the IDR comes earlier
     d = day([105, 109, 111, 99, 104])
@@ -96,5 +110,44 @@ def main():
     print("ALL CHECKS PASSED" if ok else "CHECKS FAILED")
 
 
+def compare_export(path):
+    """Levels of DR/IDR V1.5 on TradingView against dridr.sessions() on the same bars."""
+    x = pd.read_csv(path)
+    t = x["time"]
+    if not pd.api.types.is_numeric_dtype(t):                 # "ISO time" export instead of UNIX
+        t = (pd.to_datetime(t, utc=True) - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(seconds=1)
+    b = dr.prepare(pd.DataFrame({"time": t.astype("int64"), "open": x["open"], "high": x["high"],
+                                 "low": x["low"], "close": x["close"]}))
+    print(f"{path}: {len(b)} bars {pd.to_datetime(b['time'].iloc[0], unit='s').date()} .. "
+          f"{pd.to_datetime(b['time'].iloc[-1], unit='s').date()}")
+    dr.MIN_DR_BARS = 1                                       # compare every session, gaps included
+    ok = True
+    code = {"RDR": 1, "ADR": 2, "ODR": 3}
+    for name, (a, e, _) in dr.SESSIONS.items():
+        m = b["minute"].to_numpy()
+        in_hour = (m - a) % 1440 < (e - a) % 1440
+        flag = x["DR hour"].to_numpy() == code[name]
+        ok &= check(f"{name} defining hour, bars flagged differently", int((flag != in_hour).sum()), 0)
+        day = (b["date"] - pd.to_timedelta((m < a).astype(int), unit="D")).to_numpy()
+        last = pd.Series(np.arange(len(b))[in_hour]).groupby(day[in_hour]).last()
+        days = dr.sessions(b, name)[1:]                      # the first session may start before the export
+        bad = 0
+        for d in days:
+            k = last.get(d["date"].to_datetime64())
+            if k is None:
+                continue
+            ours = np.array([d["dr_hi"], d["dr_lo"], d["idr_hi"], d["idr_lo"]])
+            theirs = x.loc[k, ["DR high", "DR low", "IDR high", "IDR low"]].to_numpy(float)
+            if not np.allclose(ours, theirs, rtol=0, atol=1e-9 * abs(ours[0])):
+                bad += 1
+                if bad <= 3:
+                    print(f"     {d['date'].date()}: ours {ours}, TradingView {theirs}")
+        ok &= check(f"{name} sessions ({len(days)}) with different DR/IDR", bad, 0)
+    return ok
+
+
 if __name__ == "__main__":
     main()
+    if len(sys.argv) > 1:
+        results = [compare_export(p) for p in sys.argv[1:]]
+        print("EXPORTS MATCH" if all(results) else "EXPORTS DIFFER")

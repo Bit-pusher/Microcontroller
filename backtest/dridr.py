@@ -1,16 +1,20 @@
 """DR / IDR (Defining Range / Implied Defining Range) and trading rules derived from it.
 
 The concept is TheMas7er's (November 2022). On TradingView it is drawn by
-scripts such as "DR/IDR V1" and LuxAlgo's "DR/IDR Candles". On 5-minute bars:
-- DR: high and low of the first hour of a session, wicks included. Regular
-  session (RDR) 09:30-10:30 New York, valid until 16:00; overnight session
-  (ODR) 03:00-04:00, valid until 08:30.
+"DR/IDR V1.5" (TheMas7er and bmistiaen, MPL-2.0) and LuxAlgo's "DR/IDR
+Candles"; the definitions below follow the V1.5 source. On 5-minute bars:
+- DR: high and low of the bars opening in the first hour of a session, wicks
+  included. Regular session (RDR) 09:30-10:30 New York, lines until 16:00;
+  after-hours session (ADR) 19:30-20:30, lines until 02:00; overnight session
+  (ODR) 03:00-04:00, lines until 08:30.
 - IDR: highest and lowest candle body (open / close) of the same hour.
 - Published rules: a 5-minute close above the DR high after the hour means the
   DR low will likely hold as the low of the session (the V1 description says
   "80 %"); a close below the DR low, the DR high will likely hold. A close
   beyond the IDR is an early indication of the same.
 - Levels: "standard deviations" in steps of 0.5 x the IDR range beyond the IDR.
+  V1.5 draws them from the regular session's IDR only; here every session uses
+  its own IDR.
 The scripts only draw these levels and have no entry or exit logic. RULES
 below derive intraday trades from them; stats() measures the rules themselves.
 
@@ -29,18 +33,18 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDICES = os.path.join(HERE, "data", "indices")
 SYMBOLS = {"SPX500": "SPX500_USD", "NAS100": "NAS100_USD", "US2000": "US2000_USD"}
-SESSIONS = {  # name: (DR start, DR end, session end), minutes after midnight New York
+SESSIONS = {  # name: (DR start, DR end, end of the lines), minutes after midnight New York
     "RDR": (9 * 60 + 30, 10 * 60 + 30, 16 * 60),
+    "ADR": (19 * 60 + 30, 20 * 60 + 30, 2 * 60),        # lines until 02:00 the next morning
     "ODR": (3 * 60, 4 * 60, 8 * 60 + 30),
 }
 MIN_DR_BARS = 10                 # of 12: days with gaps in the defining hour are skipped
 
 
 def prepare(b):
-    """Add the New York date and minute of day to bars with UTC times (weekdays only)."""
+    """Add the New York date and minute of day to bars with UTC times."""
     ny = pd.to_datetime(b["time"], unit="s", utc=True).dt.tz_convert("America/New_York")
-    b = b.assign(date=ny.dt.date, minute=(ny.dt.hour * 60 + ny.dt.minute).astype(int))
-    return b[ny.dt.dayofweek < 5].reset_index(drop=True)
+    return b.assign(date=ny.dt.tz_localize(None).dt.normalize(), minute=(ny.dt.hour * 60 + ny.dt.minute).astype(int))
 
 
 def load(market):
@@ -48,15 +52,19 @@ def load(market):
 
 
 def sessions(b, name):
-    """Per day: DR / IDR levels and the bars of the session after the defining hour."""
+    """Per day: DR / IDR levels and the bars of the session after the defining hour. A session belongs
+    to the day its defining hour starts on (the ADR runs past midnight)."""
     a, e, end = SESSIONS[name]
+    hour, span = (e - a) % 1440, (end - a) % 1440
     o, h, l, c = (b[k].to_numpy(float) for k in ("open", "high", "low", "close"))
     m = b["minute"].to_numpy()
+    rel = (m - a) % 1440                                   # minutes since the start of the defining hour
+    day = b["date"] - pd.to_timedelta((m < a).astype(int), unit="D")
     out = []
-    for date, idx in b.groupby("date").indices.items():
-        mi = m[idx]
-        dr = idx[(mi >= a) & (mi < e)]
-        tr = idx[(mi >= e) & (mi < end)]
+    for date, idx in pd.Series(np.arange(len(b))).groupby(day.to_numpy()).indices.items():
+        ri = rel[idx]
+        dr = idx[ri < hour]
+        tr = idx[(ri >= hour) & (ri < span)]
         if len(dr) < MIN_DR_BARS or len(tr) == 0:
             continue
         out.append({
