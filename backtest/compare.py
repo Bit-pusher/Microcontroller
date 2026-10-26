@@ -158,14 +158,16 @@ def daily_returns(bars, ret, a, b):
     return pd.Series(1.0 + ret[a:b], index=t).groupby(t.normalize()).prod() - 1.0
 
 
-def evaluate(pos_by_market, bars_by_market, win):
+def evaluate(pos_by_market, bars_by_market, win, costs=None):
+    """costs: cost per side by market, None for the real spread (default: MARKETS)."""
+    costs = costs or {m: c for m, (_, c) in MARKETS.items()}
     row = {"is": {}, "oos": {}, "daily": {"is": {}, "oos": {}}}
     for m, pos in pos_by_market.items():
         bars = bars_by_market[m]
         times = bars["time"].to_numpy()
         t0, ts = win[m]
         start, split = int(np.searchsorted(times, t0)), int(np.searchsorted(times, ts))
-        ret, held, trades = bt.simulate(bars, pos, start, MARKETS[m][1])
+        ret, held, trades = bt.simulate(bars, pos, start, costs[m])
         for part, (a, b) in (("is", (start, split)), ("oos", (split, len(bars)))):
             mt = bt.metrics(bars, ret, held, trades, a, b)
             row[part][m] = {k: mt[k] for k in ("cagr", "sharpe", "max_dd", "trades_per_year", "exposure")}
@@ -173,8 +175,8 @@ def evaluate(pos_by_market, bars_by_market, win):
                 row[part][m]["equity_weekly"] = mt["equity_weekly"]
             row["daily"][part][m] = daily_returns(bars, ret, a, b)
     for part in ("is", "oos"):
-        row[part + "_mean_sharpe"] = float(np.mean([row[part][m]["sharpe"] for m in MARKETS]))
-        # equal-weight portfolio of the four markets, rebalanced daily
+        row[part + "_mean_sharpe"] = float(np.mean([row[part][m]["sharpe"] for m in pos_by_market]))
+        # equal-weight portfolio of the markets, rebalanced daily
         port = pd.concat(row["daily"][part], axis=1, sort=True).fillna(0.0).mean(axis=1)
         years = (port.index[-1] - port.index[0]).days / 365.25
         per_year = len(port) / years
