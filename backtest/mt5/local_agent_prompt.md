@@ -1,7 +1,8 @@
 # Auftrag: MT5-Historie exportieren und `HistoryExport.mq5` reparieren
 
 Du arbeitest auf meinem Windows-Rechner, auf dem MetaTrader 5 installiert ist. Eine Claude-Sitzung in
-der Cloud (Name `microcontroller-c0`) hat das Exportskript geschrieben und wertet die Daten später aus.
+der Cloud hat das Exportskript geschrieben und wertet die Daten später aus. Ihr Name beginnt mit
+`microcontroller-` (zuletzt `microcontroller-db`; er kann sich nach einem Neustart ändern).
 Sie kann aber weder MetaEditor noch MetaTrader erreichen. Dein Ziel: **funktionierende Exportdateien**
 und ein Bericht an die Cloud-Sitzung. Antworte mir auf Deutsch.
 
@@ -73,16 +74,23 @@ abgebrochener Lauf fortgesetzt werden kann.
    - Die Probedaten als ZIP in meinen Download-Ordner legen, damit ich sie in der Cloud-Sitzung anhänge.
      Daten nur nach Rückfrage auf GitHub hochladen (jede Datei unter 100 MB, kein Git LFS).
 
-## Bericht an die Cloud-Sitzung
+## Verbindung zur Cloud-Sitzung
 
-Wenn dir `ListAgents`/`SendMessage` die Sitzung `microcontroller-c0` anzeigen, schick ihr:
+Inhalt jedes Berichts:
 - die gefundenen Fehlerzeilen und die Ursache,
 - deine Änderung (Diff),
 - das Ergebnis des Probelaufs: Symbole, Zeitraum, Zeilen und Größe je Datei, Abstand der Serverzeit
   zu UTC, Ablageort der Daten.
 
-Erreichst du sie nicht, schreib denselben Inhalt in `backtest/mt5/export_report.md` und sag mir, dass
-ich ihn in die Cloud-Sitzung kopieren soll.
+Wege, in dieser Reihenfolge:
+1. **Nachricht:** Ist diese Sitzung mit Remote Control verbunden, zeigt `ListAgents` die Cloud-Sitzung
+   (`microcontroller-…`). Schick ihr den Bericht mit `SendMessage`. Die Cloud-Sitzung kann darauf **nicht**
+   per Nachricht antworten.
+2. **Repo, auch für die Antworten:** Schreib den Bericht in `backtest/mt5/export_report.md`, committe ihn
+   auf `claude/gallant-hypatia-484qqo` und pushe nach meinem OK. Die Cloud-Sitzung antwortet in
+   `backtest/mt5/cloud_notes.md` auf demselben Branch. Hol dir ihre Antworten mit `git pull`, bevor du
+   weitermachst, und wenn ich dir sage, dass sie geantwortet hat.
+3. Klappt beides nicht, sag mir, dass ich den Bericht in die Cloud-Sitzung kopieren soll.
 
 ## Regeln
 
