@@ -24,6 +24,7 @@ import crypto
 import smc
 import tradingview as tv
 
+
 def universe_fx():
     win, _ = cmp.windows()
     bars = {(m, tf): tv.market_bars(m, tf) for m in cmp.MARKETS for tf in ("H4/H1", "D1")}

@@ -273,6 +273,100 @@ Krypto (Out-of-Sample 3,8 Jahre):
 - Die Struktur-Regeln verhalten sich wie andere Trendfilter (SMA 200, SuperTrend): Sie halbieren den
   Drawdown auf steigenden Märkten, einen messbaren Vorteil nach Kosten liefern sie nicht.
 
+## Ergebnis 7: DR/IDR (Defining Range)
+
+Das Konzept stammt von TheMas7er (November 2022). Auf TradingView zeichnen es unter anderem
+[DR/IDR V1](https://www.tradingview.com/script/upzvFFch-DR-IDR-V1/) und
+[DR/IDR Candles (LuxAlgo)](https://www.tradingview.com/script/wRtmtWIQ-DR-IDR-Candles-LuxAlgo/).
+Auf 5-Minuten-Kerzen gilt:
+
+- **DR:** Hoch und Tief der ersten Stunde einer Session, mit Dochten. Reguläre Session (RDR)
+  09:30–10:30 New York, gültig bis 16:00; Overnight-Session (ODR) 03:00–04:00, gültig bis 08:30.
+- **IDR:** höchster und tiefster Kerzenkörper (Open/Close) derselben Stunde.
+- **Regeln:** Schließt nach dieser Stunde eine 5-Minuten-Kerze über dem DR-Hoch, soll das DR-Tief das
+  Tief der Session bleiben (die V1-Beschreibung nennt „80 %“). Bei einem Schluss unter dem DR-Tief gilt
+  das Umgekehrte. Ein Schluss jenseits der IDR gilt als frühes Signal.
+- **Ziele:** „Standardabweichungen“, also Vielfache von 0,5 × IDR-Spanne jenseits der IDR.
+
+Die Skripte zeichnen nur diese Linien und legen keine Ein- oder Ausstiege fest.
+
+`fetch_indices.py` lädt Oanda-Minutendaten der CFDs auf S&P 500, Nasdaq 100 und Russell 2000
+(Januar 2005 bis Mai 2020, Mittelkurse) aus [FutureSharks/financial-data](https://github.com/FutureSharks/financial-data)
+und baut daraus 5-Minuten-Kerzen. Die Stunde 09:30–10:30 ist an 99 % der Tage vollständig. Im
+Overnight-Fenster fehlen vor 2008 viele Kerzen; übersprungen werden Tage, an denen in der DR-Stunde
+weniger als 10 von 12 Kerzen vorliegen. Einen TradingView-Export eines DR/IDR-Skripts gab es nicht.
+`check_dridr.py` prüft deshalb Niveaus, Zeitzone (Sommer- und Winterzeit) und Orderausführung an
+22 von Hand durchgerechneten Fällen. `dridr_test.py` rechnet alles Folgende.
+
+### Stimmt die 80-%-Regel?
+
+Gemessen wird: Nach dem ersten Schluss jenseits der DR (ab 10:30), wie oft bleibt die Gegenseite der DR
+bis Sessionende unberührt? Als Placebo dienen dieselben Tage mit zufällig umsortierten Kerzen nach
+10:30: gleiche DR, gleiche Schwankung, aber keine Abfolge mehr. Der „Trade“ ist die Regel wörtlich:
+Einstieg nach der Bestätigung, Stop an der DR-Gegenseite, Ausstieg um 16:00, ohne Kosten.
+
+RDR, jeweils In-Sample (2005–2014) / Out-of-Sample (2015 bis Mai 2020):
+
+| Markt | DR-Spanne (Median) | Gegenseite hält | Placebo | Trade, wenn sie hält | Trade, wenn nicht | Trade im Mittel |
+|---|---|---|---|---|---|---|
+| SPX500 | 0,51 % / 0,38 % | 76 % / 76 % | 74 % / 72 % | +22,5 / +16,6 bp | −66,7 / −54,3 bp | +1,4 / −0,4 bp |
+| NAS100 | 0,70 % / 0,58 % | 79 % / 80 % | 77 % / 80 % | +21,2 / +17,8 bp | −81,9 / −73,9 bp | −0,6 / −0,6 bp |
+| US2000 | 0,86 % / 0,68 % | 79 % / 81 % | 80 % / 82 % | +29,0 / +17,0 bp | −97,8 / −78,0 bp | +2,9 / −1,1 bp |
+
+- Die Regel stimmt: Nach einer Bestätigung hält die Gegenseite in 76–81 % der Fälle (ODR: 69–75 %).
+  Die 80 % sind also nicht erfunden.
+- Über die Richtung sagt das kaum etwas. Auf den Placebo-Tagen hält die Gegenseite fast genauso oft
+  (72–82 %, ODR 65–71 %). Die Quote folgt aus der Geometrie: Wer über dem DR-Hoch schließt, ist
+  mindestens eine DR-Spanne vom DR-Tief entfernt. Diese Strecke legt der Kurs im Rest des Tages
+  meistens nicht mehr zurück, auch ohne jede Regelmäßigkeit.
+- Für den Handel zählt die Auszahlung. Stimmt die Regel, bringt der Trade im Mittel +17 bis +29 bp;
+  stimmt sie nicht, kostet er −54 bis −98 bp. Im Mittel bleiben −1 bis +3 bp vor Kosten (ODR −0,3 bis
+  −1,8 bp). Das ist weniger als ein Round Trip kostet (2 bp).
+
+### Handelssysteme
+
+Vorab festgelegt sind 72 Varianten. Dimensionen:
+
+- Session: RDR oder ODR.
+- Einstieg: nach dem ersten Schluss jenseits der DR, nach dem ersten Schluss jenseits der IDR oder als
+  Limit-Order beim Rücklauf an die IDR nach der DR-Bestätigung.
+- Stop: DR-Gegenseite oder DR-Mitte.
+- Ziel: 0,5 SD, 1 SD oder keins (Ausstieg zum Sessionende).
+- Richtung: Long+Short oder nur Long.
+
+Ein Trade pro Session und Tag. Kosten 1 bp je Seite, etwa Spread und Kommission bei ES-/NQ-Futures.
+Market-Orders werden zur nächsten Eröffnung ausgeführt, Limits, Stops und Ziele zu ihrem Kurs (bei
+einer Lücke zur Eröffnung). Berührt eine Kerze Stop und Ziel, zählt der Stop. Gewählt wird nach dem
+mittleren In-Sample-Sharpe der drei Märkte.
+
+Portfolio der drei Indizes zu gleichen Teilen, Out-of-Sample 5,4 Jahre:
+
+| Variante | Sharpe IS | Sharpe OOS | t-Wert | CAGR OOS | max. DD OOS | Trades/Jahr | Trefferquote |
+|---|---|---|---|---|---|---|---|
+| RDR: IDR-Bestätigung, Stop DR-Mitte, Ziel 1 SD, Long+Short (gewählt) | 0,39 | −0,70 | −1,6 | −4,1 % | −24,7 % | 247 | 46 % |
+| RDR: DR-Bestätigung, Stop DR-Gegenseite, bis Sessionende, Long+Short (die Regel wörtlich) | −0,16 | −0,74 | −1,7 | −6,7 % | −35,0 % | 239 | 46 % |
+| RDR: IDR-Bestätigung, Stop DR-Gegenseite, bis Sessionende, nur Long (bestes OOS-Ergebnis im Nachhinein) | 0,14 | −0,27 | −0,6 | −1,8 % | −14,8 % | 134 | 50 % |
+| *Vergleich: jeden Tag Long von 10:30 bis 16:00* | −0,21 | −0,24 | −0,6 | −3,6 % | −30,7 % | ca. 250 | |
+| *Vergleich: Buy & Hold* | 0,45 | 0,44 | 1,0 | 7,0 % | −35,3 % | | |
+
+- Keine der 72 Varianten ist nach Kosten Out-of-Sample positiv. Ohne Kosten sind es 12, die beste
+  mit einem Sharpe von 0,24.
+- In-Sample hatten die RDR-Varianten mit IDR-Einstieg vor Kosten ein Sharpe um 1 (gewählte Variante:
+  1,13), Out-of-Sample noch 0,16. Das Momentum nach dem Ausbruch war in den Jahren um 2008 stärker;
+  für die Kosten von rund 250 Trades im Jahr reicht es nicht. Bei 2 bp je Seite liegen alle fünf
+  In-Sample besten Varianten Out-of-Sample bei −0,8 oder schlechter.
+- Ziele bei 0,5 SD bringen die höchsten Trefferquoten (bis 70 %). Bei RDR liefern sie aber die
+  schlechtesten Ergebnisse (mittleres OOS-Sharpe −1,21 gegen −0,70 ohne Ziel): kleine Gewinne, volle
+  Verluste. Auch der Einstieg beim Rücklauf an die IDR schneidet bei RDR schlechter ab (−1,14 gegen
+  −0,65 mit IDR-Einstieg).
+- Die Overnight-Range ist durchweg deutlich negativ (mittleres OOS-Sharpe −1,9 gegen −0,9 bei RDR).
+  Ihre Spanne ist mit rund 0,2 % so klein, dass die Kosten den Großteil aufzehren.
+- Die Rangkorrelation zwischen In-Sample und Out-of-Sample ist hoch (0,88). Sie spiegelt vor allem die
+  unterschiedliche Kostenlast (ODR gegen RDR, Ziele gegen Sessionende), nicht einen Vorteil.
+- Nicht getestet: der von TheMas7er empfohlene Verzicht auf Tage mit wichtigen Nachrichten
+  (CPI, FOMC, NFP) und diskretionäre Zusätze wie „Displacement“. CFD-Mittelkurse statt Futures,
+  Daten nur bis Mai 2020.
+
 ## Fazit
 
 - Als eigenständiges Handelssystem (Long und Short) zeigt der Indikator auf keinem der
@@ -285,6 +379,8 @@ Krypto (Out-of-Sample 3,8 Jahre):
   Filter ähnliches.
 - Dasselbe gilt für die aus Smart Money Concepts abgeleiteten Regeln: Die Marktstruktur taugt als
   Long-only-Trendfilter, Einstiege an Order Blocks verlieren Out-of-Sample.
+- DR/IDR: Die bekannte 80-%-Regel trifft zu, folgt aber aus der Geometrie der Range und gilt auch
+  für zufällig umsortierte Kurse. Als Intraday-System verliert sie nach Kosten auf allen drei Indizes.
 
 ## Einschränkungen
 
