@@ -168,6 +168,38 @@ Portfolio aus allen vier Märkten, je Skript die In-Sample beste Variante, Out-o
   ersten Jahren sagten kaum etwas über die späteren voraus.
 - Auf H4/H1 sind die meisten Skripte nach Kosten deutlich negativ (bis −0,78, t −2,0).
 
+## Ergebnis 5: Krypto
+
+`fetch_crypto.py` lädt Binance-Spot-Kerzen (H4, D1) für BTC, ETH, BNB, XRP, ADA und LINK gegen USDT
+aus dem Spiegel [finom/static-klines](https://github.com/finom/static-klines), vom Listing bis
+Oktober 2026. `crypto.py` testet darauf alle Regeln von oben: AI-SuperTrend (H4; für D1 bräuchte der
+KNN sechs Jahre Anlauf), die klassischen Indikatoren und die TradingView-Skripte, jeweils
+Long+Short und nur Long, zusammen 70 Varianten. Kosten 0,1 % je Seite (Binance-Spotgebühr),
+keine Funding-Kosten. In-Sample ab 400 Tagen nach dem Listing bis Ende 2022, Out-of-Sample
+von Januar 2023 bis Oktober 2026. Der Out-of-Sample-Zeitraum enthält den Aufschwung bis Oktober 2025
+und den Einbruch danach (BTC −53 %, ETH −68 %, ADA −88 % vom Hoch).
+
+Portfolio der sechs Paare zu gleichen Teilen:
+
+| Regel | Sharpe IS | Sharpe OOS | t-Wert | CAGR OOS | max. DD OOS |
+|---|---|---|---|---|---|
+| Hull Suite (H4, nur Long), In-Sample gewählt | 1,57 | 0,82 | 1,6 | 27,2 % | −53,6 % |
+| AI-SuperTrend KNN State (H4, nur Long, Faktor 3, Schwelle 0,9), auf FX/Gold/SPY gewählt | 1,30 | 0,79 | 1,5 | 23,4 % | −38,4 % |
+| SMA 200 (D1, nur Long), auf FX/Gold/SPY gewählt | 1,12 | 0,55 | 1,1 | 14,6 % | −44,3 % |
+| Lorentzian Classification (D1, nur Long), auf FX/Gold/SPY gewählt | 0,22 | 0,24 | 0,5 | 1,9 % | −17,6 % |
+| Squeeze Momentum (D1, nur Long), bestes OOS-Ergebnis im Nachhinein | 1,29 | 1,01 | 2,0 | 25,4 % | −30,2 % |
+| Buy & Hold | 0,97 | 0,81 | 1,6 | 35,3 % | −66,4 % |
+
+- Die gewählte Regel erreicht praktisch das Sharpe von Buy & Hold (0,82 gegen 0,81), bei geringerer
+  Rendite und kaum kleinerem Drawdown. Von 35 Long-only-Varianten schlagen nur 3 das Sharpe von
+  Buy & Hold, von 35 Long+Short-Varianten keine. Leerverkäufe haben in Krypto durchweg geschadet.
+- Die auf FX/Gold/SPY gewählte AI-SuperTrend-Regel hält auf diesem völlig neuen Markt, was sie dort
+  zeigte: Sharpe etwa wie Buy & Hold, Drawdown deutlich kleiner (−38 % statt −66 %), Rendite niedriger.
+- Die Rangkorrelation zwischen In-Sample und Out-of-Sample ist hier hoch (0,71). Sie kommt fast ganz
+  aus dem Gegensatz „nur Long“ gegen „Long+Short“ bei einem stark steigenden Markt, nicht aus der
+  Qualität einzelner Indikatoren.
+- Die Auswahl der Paare (heute noch große Coins) bevorzugt rückblickend Buy & Hold und alle Long-Regeln.
+
 ## Fazit
 
 - Als eigenständiges Handelssystem (Long und Short) zeigt der Indikator auf keinem der
