@@ -390,3 +390,32 @@ Portfolio der drei Indizes zu gleichen Teilen, Out-of-Sample 5,4 Jahre:
   Long-only-Regel anteilig zur Marktzeit (ca. 77 %) ebenfalls.
 - Oanda-Retail-Spreads. Bei ECN-Konten mit Kommission sind die Kosten etwas niedriger, das ändert
   das Gesamtbild auf H1 aber nicht (die Bruttorenditen sind schon nahe null).
+
+## Eigene Daten: Export aus MetaTrader 5
+
+`mt5/HistoryExport.mq5` ist ein MQL5-Skript, das auf dem eigenen Rechner im MetaTrader-5-Terminal läuft.
+Es exportiert für die gewählten Symbole M1-Kerzen (mit Spread), Ticks (Bid/Ask, bei Börsensymbolen auch
+Last und Volumen) und die Symbolspezifikationen (Kontraktgröße, Tickwert, Swaps, Handelszeiten) als CSV.
+Kontonummer, Kontostand und Positionen werden nicht exportiert.
+
+1. In MetaTrader *Datei > Dateiordner öffnen*, die Datei nach `MQL5\Scripts` kopieren, in MetaEditor
+   öffnen und kompilieren (F7).
+2. *Extras > Optionen > Charts > Max. Bars im Chart* auf *Unlimited* stellen und MetaTrader neu starten,
+   sonst begrenzt das Terminal die M1-Historie.
+3. Das Skript aus dem Navigator auf einen beliebigen Chart ziehen und die Eingaben setzen: Symbolliste
+   (oder alle Symbole der Marktübersicht bzw. des Servers), Zeitraum, Ticks und/oder M1.
+4. Fortschritt steht oben links im Chart, Details im Reiter *Experten*. Ein abgebrochener Lauf kann neu
+   gestartet werden: Fertige Monate (Ticks) und Jahre (M1) werden übersprungen.
+
+Ausgabe in `Common\Files\HistoryExport\<Server>\` (Pfad steht am Ende im Protokoll):
+
+| Datei | Inhalt |
+|---|---|
+| `export_info.txt` | Broker, Server, Abstand der Serverzeit zu UTC beim Export, Zeitraum |
+| `symbols.csv` | Spezifikationen und Handelszeiten aller exportierten Symbole (Trennzeichen `;`) |
+| `<Symbol>/<Symbol>_M1_<Jahr>.csv` | `time,open,high,low,close,tick_volume,spread,real_volume` (Bid, Spread in Punkten) |
+| `<Symbol>/ticks/<Symbol>_ticks_<Jahr-Monat>.csv` | `time_msc,bid,ask,last,volume_real,flags` |
+
+Alle Zeiten sind Serverzeit (bei vielen Brokern UTC+2, im US-Sommer UTC+3). Ticks sind groß: ein
+FX-Paar erzeugt je nach Broker einige Millionen Ticks pro Monat, als CSV etwa 100–500 MB, gezippt
+rund ein Fünftel davon. M1-Kerzen kosten etwa 20 MB pro Symbol und Jahr.
