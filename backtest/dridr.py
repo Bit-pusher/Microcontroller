@@ -15,6 +15,11 @@ Candles"; the definitions below follow the V1.5 source. On 5-minute bars:
 - Levels: "standard deviations" in steps of 0.5 x the IDR range beyond the IDR.
   V1.5 draws them from the regular session's IDR only; here every session uses
   its own IDR.
+LuxAlgo's "DR/IDR Candles" (CC BY-NC-SA 4.0) computes the same DR / IDR but
+places its sessions with a fixed offset of UTC-5 by default: in US summer time
+its "Regular" hour is 10:30-11:30 New York and its "Overnight" hour 04:00-05:00.
+LUX_SESSIONS reproduce that clock; its default level is the 0.5 retracement of
+the IDR (entry "retrace_mid" below).
 The scripts only draw these levels and have no entry or exit logic. RULES
 below derive intraday trades from them; stats() measures the rules themselves.
 
@@ -38,13 +43,19 @@ SESSIONS = {  # name: (DR start, DR end, end of the lines), minutes after midnig
     "ADR": (19 * 60 + 30, 20 * 60 + 30, 2 * 60),        # lines until 02:00 the next morning
     "ODR": (3 * 60, 4 * 60, 8 * 60 + 30),
 }
+LUX_SESSIONS = {  # LuxAlgo defaults: the same hours on a fixed UTC-5 clock
+    "RDR (LuxAlgo)": (9 * 60 + 30, 10 * 60 + 30, 16 * 60),
+    "ODR (LuxAlgo)": (3 * 60, 4 * 60, 8 * 60 + 30),
+}
 MIN_DR_BARS = 10                 # of 12: days with gaps in the defining hour are skipped
 
 
 def prepare(b):
-    """Add the New York date and minute of day to bars with UTC times."""
+    """Add date and minute of day to bars with UTC times: New York, and a fixed UTC-5 clock (LuxAlgo)."""
     ny = pd.to_datetime(b["time"], unit="s", utc=True).dt.tz_convert("America/New_York")
-    return b.assign(date=ny.dt.tz_localize(None).dt.normalize(), minute=(ny.dt.hour * 60 + ny.dt.minute).astype(int))
+    est = pd.to_datetime(b["time"], unit="s") - pd.Timedelta(hours=5)
+    return b.assign(date=ny.dt.tz_localize(None).dt.normalize(), minute=(ny.dt.hour * 60 + ny.dt.minute).astype(int),
+                    date_est=est.dt.normalize(), minute_est=(est.dt.hour * 60 + est.dt.minute).astype(int))
 
 
 def load(market):
@@ -54,12 +65,13 @@ def load(market):
 def sessions(b, name):
     """Per day: DR / IDR levels and the bars of the session after the defining hour. A session belongs
     to the day its defining hour starts on (the ADR runs past midnight)."""
-    a, e, end = SESSIONS[name]
+    lux = name in LUX_SESSIONS
+    a, e, end = LUX_SESSIONS[name] if lux else SESSIONS[name]
     hour, span = (e - a) % 1440, (end - a) % 1440
     o, h, l, c = (b[k].to_numpy(float) for k in ("open", "high", "low", "close"))
-    m = b["minute"].to_numpy()
+    m = b["minute_est" if lux else "minute"].to_numpy()
     rel = (m - a) % 1440                                   # minutes since the start of the defining hour
-    day = b["date"] - pd.to_timedelta((m < a).astype(int), unit="D")
+    day = b["date_est" if lux else "date"] - pd.to_timedelta((m < a).astype(int), unit="D")
     out = []
     for date, idx in pd.Series(np.arange(len(b))).groupby(day.to_numpy()).indices.items():
         ri = rel[idx]
@@ -143,8 +155,10 @@ def trade(d, entry, stop, target, long_only):
         sl = d["dr_hi"] if stop == "dr" else 0.5 * (d["dr_hi"] + d["dr_lo"])
         tp = d["idr_lo"] - target * rng if target else None
         limit = d["idr_lo"]
+    if entry == "retrace_mid":
+        limit = 0.5 * (d["idr_hi"] + d["idr_lo"])          # LuxAlgo's default level: 0.5 of the IDR
     s = side            # work in "long" coordinates: x * s rises when the trade wins
-    if entry == "retrace":
+    if entry in ("retrace", "retrace_mid"):
         fill = first(l <= limit, k + 1) if s > 0 else first(h >= limit, k + 1)
         if fill is None:
             return None
@@ -182,10 +196,14 @@ STOPS = {"dr": "Stop DR-Gegenseite", "mid": "Stop DR-Mitte"}
 TARGETS = {None: "bis Sessionende", 0.5: "Ziel 0,5 SD", 1.0: "Ziel 1 SD"}
 RULES = [{"session": s, "entry": e, "stop": st, "target": t, "long_only": lo}
          for s, e, st, t, lo in itertools.product(SESSIONS, ENTRIES, STOPS, TARGETS, (False, True))]
+# LuxAlgo's defaults as a separate grid: its clock, plus a limit at its 0.5 IDR retracement
+LUX_ENTRIES = {**ENTRIES, "retrace_mid": "Rücklauf an die IDR-Mitte"}
+LUX_RULES = [{"session": s, "entry": e, "stop": st, "target": t, "long_only": lo}
+             for s, e, st, t, lo in itertools.product(LUX_SESSIONS, LUX_ENTRIES, STOPS, TARGETS, (False, True))]
 
 
 def rule_name(r):
-    return (f"{r['session']}: {ENTRIES[r['entry']]}, {STOPS[r['stop']]}, {TARGETS[r['target']]}, "
+    return (f"{r['session']}: {LUX_ENTRIES[r['entry']]}, {STOPS[r['stop']]}, {TARGETS[r['target']]}, "
             f"{'nur Long' if r['long_only'] else 'Long+Short'}")
 
 

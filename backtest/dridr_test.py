@@ -5,7 +5,9 @@ midpoint prices. Costs: 1 basis point per side, about what an ES / NQ futures
 trader pays in spread and commission (0 and 2 basis points as sensitivity).
 In-sample 2005-2014, out-of-sample 2015 to May 2020. One rule out of the
 pre-declared grid in dridr.RULES (72 variants) is chosen on the mean in-sample
-Sharpe ratio over the three markets, then reported out-of-sample.
+Sharpe ratio over the three markets, then reported out-of-sample. LuxAlgo's
+defaults (dridr.LUX_RULES: fixed UTC-5 clock, 0.5 IDR retracement) are a
+separate grid with its own in-sample choice.
 
 usage: python3 dridr_test.py      (after fetch_indices.py)
 """
@@ -116,33 +118,49 @@ def rule_stats(days_by_key):
     return out
 
 
-def main():
-    bars = {m: dr.load(m) for m in dr.SYMBOLS}
-    days = {(m, s): dr.sessions(bars[m], s) for m in dr.SYMBOLS for s in dr.SESSIONS}
-
-    st = rule_stats(days)
-    print("published rule: after the first close beyond the DR (IDR), the opposite DR side holds until the session end")
+def print_stats(st):
     for k, r in st.items():
-        print(f"  {k:18s} days {r['days']:5d}  DR range {r['median_dr_range_pct']:4.2f}%  "
+        print(f"  {k:28s} days {r['days']:5d}  DR range {r['median_dr_range_pct']:4.2f}%  "
               f"DR close {r['dr_confirmed']:4.0%} held {r['dr_held']:4.0%} (long {r['dr_held_long']:4.0%}, "
               f"short {r['dr_held_short']:4.0%}, placebo {r['dr_held_placebo']:4.0%})  "
               f"IDR close held {r['idr_held']:4.0%} (placebo {r['idr_held_placebo']:4.0%})  "
               f"trade {r['trade_bp']:5.1f}bp: held {r['trade_bp_when_held']:5.1f}bp, broken {r['trade_bp_when_broken']:6.1f}bp")
 
+
+def run_grid(rules, days):
+    """All rules with costs, ranked on the mean in-sample Sharpe; plus the OOS portfolio Sharpe without costs."""
     rows = []
-    for rule in dr.RULES:
+    for rule in rules:
         r = evaluate({m: days[(m, rule["session"])] for m in dr.SYMBOLS}, rule, COST)
         rows.append(r)
         p = r["portfolio"]["oos"]
         tr = np.mean([r["markets"][m]["oos"]["trades_per_year"] for m in dr.SYMBOLS])
         wr = np.mean([r["markets"][m]["oos"]["win_rate"] or 0 for m in dr.SYMBOLS])
-        print(f"{r['name']:96s} IS {r['is_mean_sharpe']:5.2f}  OOS {r['oos_mean_sharpe']:5.2f}  "
+        print(f"{r['name']:110s} IS {r['is_mean_sharpe']:5.2f}  OOS {r['oos_mean_sharpe']:5.2f}  "
               f"portfolio OOS {p['sharpe']:5.2f} (t {p['t']:4.1f})  trades/y {tr:5.1f}  win {wr:4.0%}", flush=True)
-
     ranked = sorted(rows, key=lambda x: x["is_mean_sharpe"], reverse=True)
-    best = ranked[0]
     rank_corr = float(pd.Series([x["is_mean_sharpe"] for x in rows]).rank()
                       .corr(pd.Series([x["oos_mean_sharpe"] for x in rows]).rank()))
+    gross = {r["name"]: evaluate({m: days[(m, r["rule"]["session"])] for m in dr.SYMBOLS}, r["rule"], 0.0)
+             ["portfolio"]["oos"]["sharpe"] for r in rows}
+    print(f"\nchosen in-sample: {ranked[0]['name']}  IS {ranked[0]['is_mean_sharpe']:.2f}  "
+          f"OOS {ranked[0]['oos_mean_sharpe']:.2f}  portfolio OOS {ranked[0]['portfolio']['oos']['sharpe']:.2f} "
+          f"(t {ranked[0]['portfolio']['oos']['t']:.1f})")
+    print(f"rank correlation IS/OOS over {len(rows)} variants: {rank_corr:.2f}")
+    print(f"variants with positive OOS portfolio Sharpe: {sum(r['portfolio']['oos']['sharpe'] > 0 for r in rows)} "
+          f"with costs, {sum(g > 0 for g in gross.values())} without costs (of {len(rows)})")
+    return ranked, rank_corr, gross
+
+
+def main():
+    bars = {m: dr.load(m) for m in dr.SYMBOLS}
+    days = {(m, s): dr.sessions(bars[m], s) for m in dr.SYMBOLS for s in [*dr.SESSIONS, *dr.LUX_SESSIONS]}
+
+    st = rule_stats({k: v for k, v in days.items() if k[1] in dr.SESSIONS})
+    print("published rule: after the first close beyond the DR (IDR), the opposite DR side holds until the session end")
+    print_stats(st)
+    ranked, rank_corr, gross = run_grid(dr.RULES, days)
+    best = ranked[0]
     bench = benchmarks(bars, days, COST)
     sens = {}
     for r in ranked[:5]:
@@ -150,22 +168,33 @@ def main():
         for cost in SENSITIVITY:
             e = evaluate({m: days[(m, r["rule"]["session"])] for m in dr.SYMBOLS}, r["rule"], cost)
             sens[r["name"]][f"{cost * 1e4:.0f}bp"] = {"is": e["portfolio"]["is"]["sharpe"], "oos": e["portfolio"]["oos"]["sharpe"]}
-    gross = [evaluate({m: days[(m, r["rule"]["session"])] for m in dr.SYMBOLS}, r["rule"], 0.0)["portfolio"]["oos"]["sharpe"]
-             for r in rows]
-
-    print(f"\nchosen in-sample: {best['name']}  IS {best['is_mean_sharpe']:.2f}  OOS {best['oos_mean_sharpe']:.2f}  "
-          f"portfolio OOS {best['portfolio']['oos']['sharpe']:.2f} (t {best['portfolio']['oos']['t']:.1f})")
     for k, v in bench.items():
         print(f"benchmark {k}: portfolio IS {v['is']['sharpe']:.2f}, OOS {v['oos']['sharpe']:.2f}")
     for k, v in sens.items():
         print(f"costs {k}: " + "  ".join(f"{c} IS {x['is']:.2f} OOS {x['oos']:.2f}" for c, x in v.items()))
-    print(f"rank correlation IS/OOS over {len(rows)} variants: {rank_corr:.2f}")
-    print(f"variants with positive OOS portfolio Sharpe: {sum(r['portfolio']['oos']['sharpe'] > 0 for r in rows)} "
-          f"with costs, {sum(g > 0 for g in gross)} without costs (of {len(rows)})")
+
+    # LuxAlgo DR/IDR Candles with its defaults: fixed UTC-5 clock, 0.5 retracement of the IDR
+    print("\nLuxAlgo DR/IDR Candles defaults (fixed UTC-5 clock: one hour later in US summer time)")
+    st_lux = rule_stats({k: v for k, v in days.items() if k[1] in dr.LUX_SESSIONS})
+    print_stats(st_lux)
+    lux_ranked, lux_corr, lux_gross = run_grid(dr.LUX_RULES, days)
+    same = {}
+    by_name = {r["name"]: r for r in ranked + lux_ranked}
+    for r in lux_ranked:
+        ny = {**r["rule"], "session": r["rule"]["session"].split(" ")[0]}
+        if ny["entry"] in dr.ENTRIES and dr.rule_name(ny) in by_name:
+            same[r["name"]] = (by_name[dr.rule_name(ny)]["portfolio"]["oos"]["sharpe"], r["portfolio"]["oos"]["sharpe"])
+    diff = np.array([lux - ny for ny, lux in same.values()])
+    print(f"same rule, LuxAlgo clock minus New York clock: OOS portfolio Sharpe {diff.mean():+.2f} on average, "
+          f"better in {(diff > 0).sum()} of {len(diff)}")
+
     os.makedirs(bt.RESULTS, exist_ok=True)
     with open(os.path.join(bt.RESULTS, "dridr.json"), "w") as f:
         json.dump({"rule_stats": st, "variants": ranked, "chosen": best["name"], "rank_corr": rank_corr,
-                   "benchmarks": bench, "cost_sensitivity": sens, "oos_portfolio_sharpe_gross": dict(zip([r["name"] for r in rows], gross))},
+                   "benchmarks": bench, "cost_sensitivity": sens, "oos_portfolio_sharpe_gross": gross,
+                   "luxalgo": {"rule_stats": st_lux, "variants": lux_ranked, "chosen": lux_ranked[0]["name"],
+                               "rank_corr": lux_corr, "oos_portfolio_sharpe_gross": lux_gross,
+                               "oos_new_york_vs_luxalgo_clock": same}},
                   f, indent=1, default=str)
 
 

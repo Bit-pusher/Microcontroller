@@ -378,6 +378,37 @@ Portfolio der drei Indizes zu gleichen Teilen, Out-of-Sample 5,4 Jahre:
   (CPI, FOMC, NFP) und diskretionäre Zusätze wie „Displacement“. CFD-Mittelkurse statt Futures,
   Daten nur bis Mai 2020.
 
+### LuxAlgo DR/IDR Candles
+
+[DR/IDR Candles](https://www.tradingview.com/script/wRtmtWIQ-DR-IDR-Candles-LuxAlgo/) (LuxAlgo,
+CC BY-NC-SA 4.0) berechnet DR und IDR genauso wie V1.5, weicht sonst aber in mehreren Punkten ab:
+
+- **Uhrzeit:** Die Sessions liegen auf einem festen Versatz von UTC−5 (Eingabe *UTC Offset*), nicht auf
+  New Yorker Zeit. Im US-Sommer (März bis November) ist die „Regular“-DR deshalb 10:30–11:30 New York
+  statt 09:30–10:30, die „Overnight“-DR 04:00–05:00 statt 03:00–04:00. Wer den Indikator im Sommer
+  nach dem Original-Konzept nutzen will, muss den Offset auf −4 stellen.
+- **Gültigkeit:** Die Linien laufen bis zur nächsten Session, ein Sessionende (16:00, 08:30) gibt es nicht.
+  Keine Abend-Session (ADR).
+- **Niveaus:** keine „Standardabweichungen“, sondern Retracements innerhalb der Range, standardmäßig
+  nur 0,5 der IDR (die IDR-Mitte). Die Linienfarbe zeigt, ob der aktuelle Schluss über oder unter der
+  DR liegt.
+
+`tradingview/DR_IDR_Candles_LuxAlgo_export.pine` macht die vier Niveau-Plots des Originals für den
+Export sichtbar (transparent statt ausgeblendet); `check_dridr.py` erkennt die Spalten und vergleicht
+auf der UTC−5-Uhr. `dridr_test.py` testet LuxAlgos Standardeinstellungen als eigenes Raster von
+96 Varianten: Sessions auf der UTC−5-Uhr (Handel bis 16:00 bzw. 08:30 dieser Uhr) und als
+zusätzlicher Einstieg eine Limit-Order an der IDR-Mitte.
+
+- Die Regel trifft auch mit dieser Uhr zu: Die Gegenseite hält in 73–80 % (Regular) und 63–71 %
+  (Overnight) der Fälle, auf den Placebo-Tagen in 70–77 % bzw. 59–66 %.
+- Gewählt wurde „IDR-Bestätigung, Stop DR-Mitte, bis Sessionende, Long+Short“ (Regular): In-Sample 0,50,
+  Out-of-Sample −0,31 (t −0,7). Nach Kosten ist 1 von 96 Varianten Out-of-Sample positiv (0,17, t 0,4).
+- Für dieselben Regeln schneidet die verschobene Regular-Session etwas weniger schlecht ab als die
+  New Yorker (mittleres OOS-Sharpe −0,47 gegen −0,93), die verschobene Overnight-Session schlechter
+  (−2,05 gegen −1,87). Positiv wird keine.
+- Der Einstieg an der IDR-Mitte, LuxAlgos Standard-Niveau, ist der schlechteste aller Einstiege
+  (mittleres OOS-Sharpe −1,67 Regular, −2,86 Overnight).
+
 ### Die Abend-Range (ADR)
 
 Die ADR ist die einzige Session mit einem beständigen Vorteil vor Kosten: Alle 36 ADR-Varianten sind

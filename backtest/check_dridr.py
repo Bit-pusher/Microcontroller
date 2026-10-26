@@ -3,8 +3,9 @@
 Without arguments: levels, time zone, sessions past midnight, confirmation and
 trade execution on cases worked out by hand.
 
-With CSV files: exports of tradingview/DR_IDR_V1.5_export.pine ("Export chart
-data" on a 5-minute chart). The original's levels at the last bar of every
+With CSV files: exports of tradingview/DR_IDR_V1.5_export.pine or
+tradingview/DR_IDR_Candles_LuxAlgo_export.pine ("Export chart data" on a
+5-minute chart). The original's levels at the last bar of every
 defining hour are compared with dridr.sessions() on the exported bars, and its
 session flag with the New York time windows used here.
 
@@ -68,6 +69,13 @@ def main():
     ok &= check("ADR day", str(d[0]["date"].date()), "2017-06-05")
     ok &= check("ADR levels", (d[0]["dr_hi"], d[0]["dr_lo"], d[0]["idr_hi"], d[0]["idr_lo"]), (103.0, 97.0, 101.0, 100.0))
     ok &= check("ADR session bars (20:30-02:00)", len(d[0]["c"]), 66)
+    # LuxAlgo's fixed UTC-5 clock: in summer its hour starts at 10:30 New York (14:30 UTC), in winter at 09:30
+    rows = [(100, 101, 99, 100)] * 12 + [(100, 106, 94, 105)] + [(100, 101, 99, 100)] * 11 + [(100, 101, 99, 100)] * 6
+    for date, start, want in (("2017-06-01", "13:30", (101.0, 99.0, 106.0, 94.0)),
+                              ("2017-01-03", "14:30", (101.0, 99.0, 101.0, 99.0))):
+        b = dr.prepare(bars_for(date, start, rows))
+        ny, lux = dr.sessions(b, "RDR")[0], dr.sessions(b, "RDR (LuxAlgo)")[0]
+        ok &= check(f"DR high/low New York vs LuxAlgo {date}", (ny["dr_hi"], ny["dr_lo"], lux["dr_hi"], lux["dr_lo"]), want)
 
     # first close beyond the DR decides; a close beyond the IDR comes earlier
     d = day([105, 109, 111, 99, 104])
@@ -92,6 +100,8 @@ def main():
     # retracement: limit at the IDR high (108) after the confirmation, then target
     ok &= check("retrace fill + target", dr.trade(day([111, 112, 109, 110, 115], l=[110, 111, 107, 109, 110]),
                                                   "retrace", "dr", 1.0, False), (1, 108, 114))
+    ok &= check("retrace to the IDR middle (105)", dr.trade(day([111, 112, 106, 110, 115], l=[110, 111, 104, 109, 110]),
+                                                           "retrace_mid", "dr", None, False), (1, 105, 115))
     ok &= check("retrace, target first", dr.trade(day([111, 115, 107, 110]), "retrace", "dr", 1.0, False), None)
     ok &= check("retrace, stopped in fill bar", dr.trade(day([111, 112, 106], l=[110, 111, 99]), "retrace", "dr", None,
                                                          False), (1, 108, 100))
@@ -122,13 +132,17 @@ def compare_export(path):
           f"{pd.to_datetime(b['time'].iloc[-1], unit='s').date()}")
     dr.MIN_DR_BARS = 1                                       # compare every session, gaps included
     ok = True
-    code = {"RDR": 1, "ADR": 2, "ODR": 3}
-    for name, (a, e, _) in dr.SESSIONS.items():
-        m = b["minute"].to_numpy()
+    lux = "Rolling DR Maximum" in x.columns                  # LuxAlgo DR/IDR Candles (default UTC-5 clock)
+    cols = (["Rolling DR Maximum", "Rolling DR Minimum", "Rolling IDR Maximum", "Rolling IDR Minimum"] if lux
+            else ["DR high", "DR low", "IDR high", "IDR low"])
+    code = {"RDR": 1, "ADR": 2, "ODR": 3, "RDR (LuxAlgo)": 1, "ODR (LuxAlgo)": 3}
+    for name, (a, e, _) in (dr.LUX_SESSIONS if lux else dr.SESSIONS).items():
+        m = b["minute_est" if lux else "minute"].to_numpy()
         in_hour = (m - a) % 1440 < (e - a) % 1440
-        flag = x["DR hour"].to_numpy() == code[name]
-        ok &= check(f"{name} defining hour, bars flagged differently", int((flag != in_hour).sum()), 0)
-        day = (b["date"] - pd.to_timedelta((m < a).astype(int), unit="D")).to_numpy()
+        if "DR hour" in x.columns:
+            flag = x["DR hour"].to_numpy() == code[name]
+            ok &= check(f"{name} defining hour, bars flagged differently", int((flag != in_hour).sum()), 0)
+        day = (b["date_est" if lux else "date"] - pd.to_timedelta((m < a).astype(int), unit="D")).to_numpy()
         last = pd.Series(np.arange(len(b))[in_hour]).groupby(day[in_hour]).last()
         days = dr.sessions(b, name)[1:]                      # the first session may start before the export
         bad = 0
@@ -137,7 +151,7 @@ def compare_export(path):
             if k is None:
                 continue
             ours = np.array([d["dr_hi"], d["dr_lo"], d["idr_hi"], d["idr_lo"]])
-            theirs = x.loc[k, ["DR high", "DR low", "IDR high", "IDR low"]].to_numpy(float)
+            theirs = x.loc[k, cols].to_numpy(float)
             if not np.allclose(ours, theirs, rtol=0, atol=1e-9 * abs(ours[0])):
                 bad += 1
                 if bad <= 3:
