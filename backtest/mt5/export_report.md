@@ -156,8 +156,73 @@ Namen abgelegt. Ein späterer Lauf mit größerem Zeitraum hält sie dann für f
 (`InpSkipDone`). Der Probelauf schreibt deshalb in einen eigenen Ordner `HistoryExport_Probe`. Läufe mit
 unterschiedlichen Zeiträumen sollten nicht in denselben Ordner schreiben.
 
-## Probelauf
+Nachtrag: Im ersten Entwurf gab das Nachladen erst nach 300 Runden ohne neue Balken auf. Jede Runde kann
+bis zu 10 s auf `SERIES_SYNCHRONIZED` warten, im schlimmsten Fall also rund 50 min. Jetzt bricht es nach
+60 s ohne neue Balken ab (Commit „Give up loading M1 history after a minute without new bars“).
 
-Ausstehend. Eingaben: Symbolliste `US500` (keine lokale Historie, prüft also das Nachladen; dazu die
-Eröffnung des US-Kassamarkts), Von 2026.09.13 00:00, Bis 2026.09.20 00:00 (Serverzeit), alle Ticks, M1,
-Spezifikationen, Zielordner `HistoryExport_Probe`, Common\Files.
+## Probelauf (2026-10-27, 14:10 Ortszeit)
+
+Der Nutzer war nicht am PC. Deshalb lief das Skript über eine Startkonfiguration (`[StartUp]
+Script=HistoryExport_Probe`, Chart US500,H1). Gestartet wurde eine Kopie von Version 1.01 mit
+voreingestellten Probewerten, die nur in `MQL5\Scripts` liegt und nicht im Repo. Eingaben: US500,
+2026.09.13 00:00 bis 2026.09.20 00:00 (Serverzeit), alle Ticks, M1, Spezifikationen, Ordner
+`HistoryExport_Probe`.
+
+```
+14:10:14.435  HistoryExport: 1 Symbole, 2026.09.13 bis 2026.09.20 (Serverzeit)
+14:10:15.896  US500 M1 2026: 6884 Kerzen
+14:10:25.843  US500 Ticks 2026-09: 380009
+14:10:25.845  HistoryExport fertig: 380009 Ticks, 6884 M1-Kerzen, 0 Fehler. Ordner: ...\Common\Files\HistoryExport_Probe\ICMarketsSC-MT5-2
+```
+
+Vor dem Lauf lag für US500 keine Historie im Terminal. Das Nachladen der M1-Daten dauerte 1,5 s.
+
+### Dateien
+
+| Datei | Zeilen ohne Kopf | Größe | Zeitraum (Serverzeit) |
+|---|---|---|---|
+| `export_info.txt` | – | 428 B | – |
+| `symbols.csv` | 1 | 585 B | – |
+| `US500/US500_M1_2026.csv` | 6 884 | 358 621 B | 2026-09-14 01:00 bis 2026-09-18 23:54 |
+| `US500/ticks/US500_ticks_2026-09.csv` | 380 009 | 16 340 428 B | 2026-09-14 01:00:15.006 bis 2026-09-18 23:54:52.630 |
+
+### Prüfungen
+
+- Die Kopfzeilen entsprechen der Vorgabe.
+- **M1:** Zeitstempel streng aufsteigend, keine Duplikate, alle auf voller Minute, OHLC konsistent.
+  Spread (Minimum je Kerze) 30 bis 50 Punkte, Median 50 Punkte = 0,50 Indexpunkte.
+- **Ticks:** `time_msc` aufsteigend, kein Zeitstempel doppelt, keine doppelte Zeile, kein Bid > Ask, nie
+  Bid oder Ask = 0. Spread 30 bis 100 Punkte, Median und 99. Perzentil 50. `last` und `volume_real` sind 0
+  (CFD). Flags: 1158 (379 839), 1154 (161), 1028 (9).
+- M1 und Ticks decken genau dieselben Minuten ab.
+- Handel Montag bis Freitag jeweils 01:00 bis 23:59 Serverzeit, freitags bis 23:55, wie
+  `sessions_server_time` in `symbols.csv`. Tägliche Pause 00:00 bis 01:00.
+
+### Abstand Serverzeit zu UTC
+
+- **Aus den Daten: UTC+3 in der Probewoche** (US-Sommerzeit).
+  - Die tägliche Pause 00:00 bis 01:00 Serverzeit entspricht der CME-Pause 17:00 bis 18:00 New York
+    (EDT, UTC−4), also 21:00 bis 22:00 UTC.
+  - Kassamarkt: Die mittlere M1-Spanne springt um 16:30 Serverzeit auf das 2,3-Fache der 15 Minuten davor,
+    die Ticks je Minute steigen von 68 auf 160. 9:30 New York = 13:30 UTC = 16:30 bei UTC+3. Um 15:30
+    (×1,4) und 17:30 (×1,0) gibt es keinen vergleichbaren Sprung.
+  - `export_info.txt` vom 2026-10-26 (Drag & Drop, Terminal lief schon) meldete ebenfalls +3.00.
+- **`export_info.txt` dieses Laufs ist falsch:** `server_utc_offset_hours_now=+0.00`, `export_time_server`
+  gleich `export_time_utc`. Ebenso steht in `symbols.csv` `tick_value=0` (gestern 0.00892857). Das Skript
+  startete 27 s nach dem Terminal. `TimeTradeServer()` kannte den Serverzeitversatz offenbar noch nicht,
+  und für die Umrechnung des Tickwerts fehlten noch Kurse. Bei Drag & Drop in ein laufendes Terminal tritt
+  das nicht auf. Nicht geändert. Möglich wäre, dass das Skript beim Start wartet, bis das Terminal
+  verbunden ist und Kurse vorliegen.
+
+### Ablage
+
+`HistoryExport_Probe_US500_2026-09-13.zip` (2,05 MB) im Download-Ordner des Nutzers, zum Anhängen in der
+Cloud-Sitzung. Nicht auf GitHub.
+
+### Offene Fragen an die Cloud-Sitzung
+
+- Welche Symbole und welcher Zeitraum für den vollen Export? Laut einer älteren Symbolliste des Nutzers
+  (`Common\Files\symbols_dump.csv` vom 2026-09-14) heißen die US-Indizes `US500`, `USTEC`, `US2000` und
+  `US30`. Ob die Liste vom Server `ICMarketsSC-MT5-2` stammt, ist nicht geprüft.
+- Soll das Skript beim Start auf Verbindung und Kurse warten, damit `export_info.txt` und `tick_value`
+  auch bei einem Start mit dem Terminal stimmen?
