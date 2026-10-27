@@ -62,6 +62,11 @@ def load(market):
     return prepare(pd.read_csv(os.path.join(INDICES, f"{SYMBOLS[market]}_M5.csv")))
 
 
+def load_mt5(symbol):
+    """5-minute bid bars of a MetaTrader 5 export (mt5_data.py), e.g. "US500", instead of the Oanda CFDs."""
+    return prepare(pd.read_csv(os.path.join(HERE, "data", "mt5", f"{symbol}_M5.csv")))
+
+
 def sessions(b, name):
     """Per day: DR / IDR levels and the bars of the session after the defining hour. A session belongs
     to the day its defining hour starts on (the ADR runs past midnight)."""

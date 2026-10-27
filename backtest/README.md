@@ -485,3 +485,32 @@ Ausgabe in `Common\Files\HistoryExport\<Server>\` (Pfad steht am Ende im Protoko
 Alle Zeiten sind Serverzeit (bei vielen Brokern UTC+2, im US-Sommer UTC+3). Ticks sind groß: ein
 FX-Paar erzeugt je nach Broker einige Millionen Ticks pro Monat, als CSV etwa 100–500 MB, gezippt
 rund ein Fünftel davon. M1-Kerzen kosten etwa 20 MB pro Symbol und Jahr.
+
+Version 1.01 lädt die M1-Historie vor dem Export vom Server nach. Version 1.00 hatte Monate ohne
+lokal geladene Historie als „keine Daten“ gewertet und deshalb leere Dateien erzeugt. Die Fehlersuche
+dokumentiert `mt5/export_report.md`.
+
+### Import
+
+`python3 -I mt5_data.py data/mt5_export/<Server>` (den Server-Ordner des Exports nach `data/mt5_export/`
+kopieren) rechnet die Serverzeit in UTC um und schreibt je Symbol `data/mt5/<Symbol>_H1.csv` im Format
+von `fetch_data.py` sowie `data/mt5/<Symbol>_M5.csv` für `dridr.py` (`dridr.load_mt5("US500")`). Als
+Ask gilt Bid plus der kleinste Spread der Minute.
+
+Die Umrechnung nimmt an, dass der Server auf New Yorker Zeit + 7 Stunden läuft (UTC+2, im US-Sommer
+UTC+3), wie bei IC Markets und vielen anderen MT5-Brokern. `mt5_data.py` prüft das an den Daten:
+- Die Woche muss Sonntag gegen 17:00–18:00 New York beginnen.
+- Bei US-Index-CFDs muss die Zahl der Kursänderungen um 09:30 New York stärker steigen als eine Stunde
+  früher oder später.
+
+### Probe: US500 bei IC Markets, 14.–18. September 2026
+
+- **Umfang:** 6.884 M1-Kerzen und 380.009 Ticks, ohne Lücken, Duplikate oder Bid über Ask.
+- **M1 aus Ticks:** Die M1-Kerzen lassen sich aus den Ticks exakt nachbauen (OHLC und Spread in jeder Minute).
+- **Serverzeit:** UTC+3. Die Woche beginnt Sonntag 18:00 New York. Die Kursänderungen je Minute steigen um
+  08:30 / 09:30 / 10:30 New York auf das 1,2- / 2,0- / 0,9-Fache, der Sprung liegt also auf der Kassaeröffnung.
+- **Spread:** 0,30 Punkte von 09:30 bis 16:00 New York, sonst 0,50 Punkte. Beim Indexstand von rund 7.600
+  sind das 0,2 bzw. 0,33 bp je Seite, deutlich weniger als die 1 bp je Seite in Ergebnis 7.
+  - Dieser Spread lässt sich nicht einfach auf die Oanda-Daten 2005–2020 übertragen: Bei festen Punkten
+    wiegt er bei niedrigeren Indexständen (1.200–3.000) in Basispunkten das 2,5- bis 6-Fache.
+  - Die faire Prüfung ist ein Test auf den Daten des Brokers selbst, mit dem vollen M1-Export.
