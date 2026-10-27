@@ -105,7 +105,7 @@ neuer Lauf es nachholt. Kompiliert mit `0 errors, 0 warnings`, beim Nutzer in `M
 +   long     maxbars   = TerminalInfoInteger(TERMINAL_MAXBARS);
 +   long     first     = 0;
 +   int      last_bars = 0;
-+   int      fails     = 0;
++   uint     last_gain = GetTickCount();
 +   datetime times[];
 +   while(!IsStopped())
 +     {
@@ -118,13 +118,14 @@ neuer Lauf es nachholt. Kompiliert mit `0 errors, 0 warnings`, beim Nutzer in `M
 +         break;
 +      if(bars >= maxbars)
 +        { Print("Hinweis: ... Max. Bars im Chart ..."); break; }
-+      if(bars > last_bars)
-+        { last_bars = bars; fails = 0; }
-+      else if(++fails >= 300)
-+         break;                                    // nothing older arrives from the server
++      bool grew = (bars > last_bars);
++      if(grew)
++        { last_bars = bars; last_gain = GetTickCount(); }
++      else if(GetTickCount() - last_gain > 60000)
++         break;                                    // nothing older arrived from the server for a minute
 +      Comment(...);
 +      CopyTime(sym, PERIOD_M1, bars, 1000, times);  // bars beyond the oldest one: starts the download
-+      if(fails > 0)
++      if(!grew)
 +         Sleep(100);
 +     }
 +   if(!SeriesInfoInteger(sym, PERIOD_M1, SERIES_FIRSTDATE, first))

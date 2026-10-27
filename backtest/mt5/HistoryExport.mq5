@@ -376,7 +376,7 @@ datetime LoadM1History(const string sym, const datetime start, const string prog
    long     maxbars   = TerminalInfoInteger(TERMINAL_MAXBARS);
    long     first     = 0;
    int      last_bars = 0;
-   int      fails     = 0;
+   uint     last_gain = GetTickCount();
    datetime times[];
    while(!IsStopped())
      {
@@ -393,17 +393,18 @@ datetime LoadM1History(const string sym, const datetime start, const string prog
                "und MetaTrader neu starten");
          break;
         }
-      if(bars > last_bars)
+      bool grew = (bars > last_bars);
+      if(grew)
         {
          last_bars = bars;
-         fails     = 0;
+         last_gain = GetTickCount();
         }
-      else if(++fails >= 300)
-         break;                                    // nothing older arrives from the server
+      else if(GetTickCount() - last_gain > 60000)
+         break;                                    // nothing older arrived from the server for a minute
       Comment(StringFormat("HistoryExport  %s  %s M1 nachladen, im Terminal ab %s", progress, sym,
                            first > 0 ? TimeToString((datetime)first, TIME_DATE) : "-"));
       CopyTime(sym, PERIOD_M1, bars, 1000, times);  // bars beyond the oldest one: starts the download
-      if(fails > 0)
+      if(!grew)
          Sleep(100);
      }
    if(!SeriesInfoInteger(sym, PERIOD_M1, SERIES_FIRSTDATE, first))
