@@ -89,6 +89,74 @@ Lokal geladene Historie (`bases\ICMarketsSC-MT5-2\history\<Symbol>\<Jahr>.hcc`):
 - 4401 innerhalb der geladenen Historie bleibt eine Lücke (0 Kerzen).
 - Ticks vorerst unverändert. Prüfung im Probelauf.
 
+### Änderung (Version 1.01)
+
+Umgesetzt wie geplant, Commit „Load the M1 history from the server before exporting it“. Neue Funktion
+`LoadM1History`. In `OnStart` beginnt der M1-Export beim danach ältesten Balken im Terminal. Fehlt die
+M1-Historie ganz oder reicht sie nicht bis „Von“, steht das im Protokoll und zählt als Fehler, damit ein
+neuer Lauf es nachholt. Kompiliert mit `0 errors, 0 warnings`, beim Nutzer in `MQL5\Experts` installiert.
+
+```diff
+-#property version     "1.00"
++#property version     "1.01"
+@@ nach FirstBarDate()
++datetime LoadM1History(const string sym, const datetime start, const string progress)
++  {
++   long     maxbars   = TerminalInfoInteger(TERMINAL_MAXBARS);
++   long     first     = 0;
++   int      last_bars = 0;
++   int      fails     = 0;
++   datetime times[];
++   while(!IsStopped())
++     {
++      for(int k = 0; k < 200 && !SeriesInfoInteger(sym, PERIOD_M1, SERIES_SYNCHRONIZED) && !IsStopped(); k++)
++         Sleep(50);                                // the series is still being built
++      int bars = Bars(sym, PERIOD_M1);
++      if(!SeriesInfoInteger(sym, PERIOD_M1, SERIES_FIRSTDATE, first))
++         first = 0;
++      if(bars > 0 && first > 0 && (datetime)first <= start)
++         break;
++      if(bars >= maxbars)
++        { Print("Hinweis: ... Max. Bars im Chart ..."); break; }
++      if(bars > last_bars)
++        { last_bars = bars; fails = 0; }
++      else if(++fails >= 300)
++         break;                                    // nothing older arrives from the server
++      Comment(...);
++      CopyTime(sym, PERIOD_M1, bars, 1000, times);  // bars beyond the oldest one: starts the download
++      if(fails > 0)
++         Sleep(100);
++     }
++   if(!SeriesInfoInteger(sym, PERIOD_M1, SERIES_FIRSTDATE, first))
++      first = 0;
++   return (datetime)first;
++  }
+@@ OnStart(), M1-Teil
+          datetime first = FirstBarDate(sym);
+-         int y_from = YearOf((first > InpFrom) ? first : InpFrom);
+-         ... ExportM1Year(sym, y, first, digits);
++         datetime start = (first > InpFrom) ? first : InpFrom;
++         datetime loaded = LoadM1History(sym, start, progress);
++         if(loaded == 0)
++            -> "%s M1: keine Historie im Terminal, übersprungen", g_failed++
++         else
++           {
++            if(loaded > start)
++               -> "%s M1: Historie nur ab %s geladen (angefordert ab %s), beim nächsten Lauf erneut versucht", g_failed++
++            int y_from = YearOf((loaded > InpFrom) ? loaded : InpFrom);
++            ... ExportM1Year(sym, y, loaded, digits);
++           }
+```
+
+### Nebenbefund, nicht geändert
+
+Eine Datei, die nur einen Teil eines Monats oder Jahres abdeckt (`partial`), wird unter ihrem endgültigen
+Namen abgelegt. Ein späterer Lauf mit größerem Zeitraum hält sie dann für fertig und überspringt sie
+(`InpSkipDone`). Der Probelauf schreibt deshalb in einen eigenen Ordner `HistoryExport_Probe`. Läufe mit
+unterschiedlichen Zeiträumen sollten nicht in denselben Ordner schreiben.
+
 ## Probelauf
 
-Ausstehend.
+Ausstehend. Eingaben: Symbolliste `US500` (keine lokale Historie, prüft also das Nachladen; dazu die
+Eröffnung des US-Kassamarkts), Von 2026.09.13 00:00, Bis 2026.09.20 00:00 (Serverzeit), alle Ticks, M1,
+Spezifikationen, Zielordner `HistoryExport_Probe`, Common\Files.

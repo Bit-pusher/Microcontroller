@@ -16,7 +16,7 @@
 //|  so an interrupted run can simply be started again: finished     |
 //|  months / years are skipped (input "InpSkipDone").               |
 //+------------------------------------------------------------------+
-#property version     "1.00"
+#property version     "1.01"
 #property description "Exportiert Ticks, M1-Kerzen und Symbolspezifikationen als CSV."
 #property description "Alle Zeiten in Serverzeit. Abgebrochene Läufe können neu gestartet werden."
 #property script_show_inputs
@@ -367,6 +367,50 @@ datetime FirstBarDate(const string sym)
    return (datetime)first;
   }
 
+// Makes the terminal download the M1 history back to "start" (pattern "CheckLoadHistory" in the
+// MQL5 documentation). CopyRates by date fails with 4401 for ranges older than the oldest bar in
+// the terminal and loads nothing; requesting the bars beyond the oldest one by position does.
+// Returns the oldest M1 bar in the terminal afterwards, 0 when there is none.
+datetime LoadM1History(const string sym, const datetime start, const string progress)
+  {
+   long     maxbars   = TerminalInfoInteger(TERMINAL_MAXBARS);
+   long     first     = 0;
+   int      last_bars = 0;
+   int      fails     = 0;
+   datetime times[];
+   while(!IsStopped())
+     {
+      for(int k = 0; k < 200 && !SeriesInfoInteger(sym, PERIOD_M1, SERIES_SYNCHRONIZED) && !IsStopped(); k++)
+         Sleep(50);                                // the series is still being built
+      int bars = Bars(sym, PERIOD_M1);
+      if(!SeriesInfoInteger(sym, PERIOD_M1, SERIES_FIRSTDATE, first))
+         first = 0;
+      if(bars > 0 && first > 0 && (datetime)first <= start)
+         break;
+      if(bars >= maxbars)
+        {
+         Print("Hinweis: Extras > Optionen > Charts > \"Max. Bars im Chart\" auf Unlimited stellen "
+               "und MetaTrader neu starten");
+         break;
+        }
+      if(bars > last_bars)
+        {
+         last_bars = bars;
+         fails     = 0;
+        }
+      else if(++fails >= 300)
+         break;                                    // nothing older arrives from the server
+      Comment(StringFormat("HistoryExport  %s  %s M1 nachladen, im Terminal ab %s", progress, sym,
+                           first > 0 ? TimeToString((datetime)first, TIME_DATE) : "-"));
+      CopyTime(sym, PERIOD_M1, bars, 1000, times);  // bars beyond the oldest one: starts the download
+      if(fails > 0)
+         Sleep(100);
+     }
+   if(!SeriesInfoInteger(sym, PERIOD_M1, SERIES_FIRSTDATE, first))
+      first = 0;
+   return (datetime)first;
+  }
+
 //+------------------------------------------------------------------+
 //| Exports                                                          |
 //+------------------------------------------------------------------+
@@ -564,11 +608,30 @@ void OnStart()
       if(InpM1)
         {
          datetime first = FirstBarDate(sym);
-         int y_from = YearOf((first > InpFrom) ? first : InpFrom);
-         for(int y = y_from; y <= YearOf(g_to) && !IsStopped(); y++)
+         datetime start = (first > InpFrom) ? first : InpFrom;
+         datetime loaded = LoadM1History(sym, start, progress);
+         if(loaded == 0)
            {
-            Comment(StringFormat("HistoryExport  %s  %s M1 %04d  (%I64d Kerzen bisher)", progress, sym, y, g_bars_total));
-            ExportM1Year(sym, y, first, digits);
+            if(!IsStopped())
+              {
+               PrintFormat("%s M1: keine Historie im Terminal, übersprungen", sym);
+               g_failed++;
+              }
+           }
+         else
+           {
+            if(loaded > start && !IsStopped())
+              {
+               PrintFormat("%s M1: Historie nur ab %s geladen (angefordert ab %s), beim nächsten Lauf erneut versucht",
+                           sym, TimeToString(loaded, TIME_DATE | TIME_MINUTES), TimeToString(start, TIME_DATE | TIME_MINUTES));
+               g_failed++;
+              }
+            int y_from = YearOf((loaded > InpFrom) ? loaded : InpFrom);
+            for(int y = y_from; y <= YearOf(g_to) && !IsStopped(); y++)
+              {
+               Comment(StringFormat("HistoryExport  %s  %s M1 %04d  (%I64d Kerzen bisher)", progress, sym, y, g_bars_total));
+               ExportM1Year(sym, y, loaded, digits);
+              }
            }
         }
       if(InpTicks)
