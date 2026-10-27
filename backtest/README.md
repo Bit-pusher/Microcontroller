@@ -514,3 +514,22 @@ UTC+3), wie bei IC Markets und vielen anderen MT5-Brokern. `mt5_data.py` prüft 
   - Dieser Spread lässt sich nicht einfach auf die Oanda-Daten 2005–2020 übertragen: Bei festen Punkten
     wiegt er bei niedrigeren Indexständen (1.200–3.000) in Basispunkten das 2,5- bis 6-Fache.
   - Die faire Prüfung ist ein Test auf den Daten des Brokers selbst, mit dem vollen M1-Export.
+
+### Kosten des Kontos (IC Markets Raw Spread, Konto in EUR)
+
+Nach Angabe des Nutzers fallen an:
+- FX und Metalle: 3,25 EUR Kommission je Lot und Seite, also 6,50 EUR je Round Trip, dazu der Raw Spread.
+- Index-CFDs: keine Kommission, nur der Spread.
+
+Die Backtests auf den Broker-Daten nehmen den Spread aus den M1-Daten und rechnen die Kommission je Kerze in
+einen Anteil des Handelsvolumens um: 3,25 EUR geteilt durch den Euro-Wert eines Lots.
+
+| Markt | Kommission je Seite | zum Vergleich: Oanda-Spread in Ergebnis 1–4 (Round Trip, Median) |
+|---|---|---|
+| EURUSD (1 Lot = 100.000 EUR) | 0,33 bp | 1,02 bp (1,3 Pips) |
+| NZDUSD (1 Lot = 100.000 NZD, bei NZDUSD 0,73 und EURUSD 1,31 ≈ 56.000 EUR) | 0,58 bp | 3,19 bp (2,5 Pips) |
+| XAUUSD (1 Lot = 100 Unzen, bei 1.230 USD ≈ 94.000 EUR) | 0,35 bp, bei höherem Goldpreis weniger | 2,83 bp (0,37 USD) |
+| US500 | keine | Ergebnis 7 rechnete mit 1 bp je Seite |
+
+Für EURUSD ist die Kommission allein (0,65 bp je Round Trip) schon zwei Drittel des Oanda-Spreads; wie viel
+das Konto insgesamt spart, hängt vom Raw Spread ab, den erst der Export zeigt.
