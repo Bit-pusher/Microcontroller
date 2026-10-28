@@ -15,8 +15,11 @@
 //|  Each file is written as <name>.part and renamed when complete,  |
 //|  so an interrupted run can simply be started again: finished     |
 //|  months / years are skipped (input "InpSkipDone").               |
+//|  A file that covers only part of its year / month ends in        |
+//|  "_partial" and is never skipped; the complete file of the same  |
+//|  period replaces it.                                             |
 //+------------------------------------------------------------------+
-#property version     "1.01"
+#property version     "1.02"
 #property description "Exportiert Ticks, M1-Kerzen und Symbolspezifikationen als CSV."
 #property description "Alle Zeiten in Serverzeit. Abgebrochene Läufe können neu gestartet werden."
 #property script_show_inputs
@@ -177,6 +180,20 @@ bool Finish(const string tmp, const string name, const long count)
    return true;
   }
 
+// file of a whole year / month, or of only part of it ("_partial", never skipped as finished)
+string PeriodFile(const string base, const bool partial)
+  {
+   return base + (partial ? "_partial.csv" : ".csv");
+  }
+
+// a complete file replaces the partial one of the same period
+void DeletePartial(const string base)
+  {
+   string name = base + "_partial.csv";
+   if(FileIsExist(name, g_common) && FileDelete(name, g_common))
+      PrintFormat("%s ersetzt durch die vollständige Datei", name);
+  }
+
 //+------------------------------------------------------------------+
 //| Symbols                                                          |
 //+------------------------------------------------------------------+
@@ -211,6 +228,46 @@ int CollectSymbols(string &out[])
          Push(out, SymbolName(i, selected));
      }
    return ArraySize(out);
+  }
+
+// Waits up to 60 s until the terminal is connected and every symbol has a quote and a tick value.
+// Started together with the terminal, the script would otherwise write a server time offset of 0
+// to export_info.txt and tick values of 0 to symbols.csv.
+void WaitForQuotes(const string &symbols[])
+  {
+   int n = ArraySize(symbols);
+   for(int i = 0; i < n; i++)
+      SymbolSelect(symbols[i], true);
+   uint   t0      = GetTickCount();
+   int    missing = 0;
+   string names   = "";
+   while(!IsStopped())
+     {
+      missing = 0;
+      names   = "";
+      if(!TerminalInfoInteger(TERMINAL_CONNECTED))
+        {
+         missing = n;
+         names   = "keine Verbindung";
+        }
+      else
+         for(int i = 0; i < n; i++)
+           {
+            MqlTick tick;
+            if(SymbolInfoTick(symbols[i], tick) && tick.bid > 0
+               && SymbolInfoDouble(symbols[i], SYMBOL_TRADE_TICK_VALUE) > 0)
+               continue;
+            if(++missing <= 10)
+               names += (names == "" ? "" : ",") + symbols[i];
+           }
+      if(missing == 0 || GetTickCount() - t0 > 60000)
+         break;
+      Comment(StringFormat("HistoryExport  warte auf Verbindung und Kurse (%s)", names));
+      Sleep(500);
+     }
+   if(missing > 0 && !IsStopped())
+      PrintFormat("Warnung: nach 60 s fehlen noch Kurse oder Tickwerte für %d Symbole (%s). Serverzeit in "
+                  "export_info.txt und Tickwerte in symbols.csv können falsch sein.", missing, names);
   }
 
 string Sessions(const string sym)
@@ -415,7 +472,8 @@ datetime LoadM1History(const string sym, const datetime start, const string prog
 //+------------------------------------------------------------------+
 //| Exports                                                          |
 //+------------------------------------------------------------------+
-bool ExportM1Year(const string sym, const int year, const datetime first_bar, const int digits)
+bool ExportM1Year(const string sym, const int year, const datetime server_first, const datetime first_bar,
+                  const int digits)
   {
    datetime y0 = YearStart(year), y1 = YearStart(year + 1);
    datetime a = (y0 < InpFrom) ? InpFrom : y0;
@@ -424,9 +482,12 @@ bool ExportM1Year(const string sym, const int year, const datetime first_bar, co
       a = first_bar;
    if(a >= b)
       return true;
-   bool partial = (a != y0 || b != y1);
+   // the start of the server history does not make a year partial; "Von", "Bis" or a shorter local history do
+   datetime full = (server_first > y0) ? server_first : y0;
+   bool partial = (a > full || b != y1);
    string dir  = g_root + "\\" + SafeName(sym);
-   string name = StringFormat("%s\\%s_M1_%04d.csv", dir, SafeName(sym), year);
+   string base = StringFormat("%s\\%s_M1_%04d", dir, SafeName(sym), year);
+   string name = PeriodFile(base, partial);
    if(InpSkipDone && !partial && FileIsExist(name, g_common))
       return true;
    EnsureFolder(dir);
@@ -485,7 +546,11 @@ bool ExportM1Year(const string sym, const int year, const datetime first_bar, co
      }
    g_bars_total += count;
    PrintFormat("%s M1 %04d: %I64d Kerzen", sym, year, count);
-   return Finish(tmp, name, count);
+   if(!Finish(tmp, name, count))
+      return false;
+   if(!partial && count > 0)
+      DeletePartial(base);
+   return true;
   }
 
 bool ExportTicksMonth(const string sym, const datetime month, const int digits, const string progress)
@@ -497,7 +562,8 @@ bool ExportTicksMonth(const string sym, const datetime month, const int digits, 
       return true;
    bool partial = (a != m0 || b != m1);
    string dir  = g_root + "\\" + SafeName(sym) + "\\ticks";
-   string name = StringFormat("%s\\%s_ticks_%s.csv", dir, SafeName(sym), MonthLabel(m0));
+   string base = StringFormat("%s\\%s_ticks_%s", dir, SafeName(sym), MonthLabel(m0));
+   string name = PeriodFile(base, partial);
    if(InpSkipDone && !partial && FileIsExist(name, g_common))
       return true;
    EnsureFolder(dir);
@@ -559,7 +625,11 @@ bool ExportTicksMonth(const string sym, const datetime month, const int digits, 
    g_ticks_total += count;
    if(count > 0)
       PrintFormat("%s Ticks %s: %I64d", sym, MonthLabel(m0), count);
-   return Finish(tmp, name, count);
+   if(!Finish(tmp, name, count))
+      return false;
+   if(!partial && count > 0)
+      DeletePartial(base);
+   return true;
   }
 
 //+------------------------------------------------------------------+
@@ -591,6 +661,7 @@ void OnStart()
       PrintFormat("Hinweis: \"Max. Bars im Chart\" ist %I64d. Für lange M1-Historien unter Extras > Optionen > "
                   "Charts auf Unlimited stellen und MetaTrader neu starten.", maxbars);
 
+   WaitForQuotes(symbols);
    ExportInfo(n);
    if(InpSpecs)
       ExportSpecs(symbols);
@@ -631,7 +702,7 @@ void OnStart()
             for(int y = y_from; y <= YearOf(g_to) && !IsStopped(); y++)
               {
                Comment(StringFormat("HistoryExport  %s  %s M1 %04d  (%I64d Kerzen bisher)", progress, sym, y, g_bars_total));
-               ExportM1Year(sym, y, loaded, digits);
+               ExportM1Year(sym, y, first, loaded, digits);
               }
            }
         }

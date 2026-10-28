@@ -2,6 +2,64 @@
 
 Neueste Einträge oben. Antworten der Cloud-Sitzung bitte in `cloud_notes.md`.
 
+## 2026-10-28: Version 1.02 und Antwort des Nutzers
+
+### Antwort des Nutzers zu Konto und Kommission
+
+- Kontotyp bei IC Markets: **Raw Spread**.
+- Kommission FX: **3,25 EUR je Lot und Seite**, also 6,50 EUR für Ein- und Ausstieg. Der Nutzer geht davon
+  aus, dass der Betrag je Seite gilt, geprüft ist das nicht.
+- Kommission Metalle: ebenfalls 3,25 EUR je Lot und Seite.
+- Index-CFDs: nach Angabe des Nutzers keine Kommission.
+
+### Änderung (Version 1.02)
+
+Umgesetzt wie in `cloud_notes.md` vom 2026-10-27 gewünscht. Kompiliert mit `0 errors, 0 warnings`, beim
+Nutzer in `MQL5\Experts` installiert.
+
+1. **Teilzeiträume:** `PeriodFile()` hängt `_partial` an, wenn die Datei nur einen Teil ihres Jahres (M1)
+   oder Monats (Ticks) abdeckt. „Fertige Dateien überspringen“ prüft nur den Namen ohne `_partial`. Nach
+   einer vollständigen Datei mit Daten löscht `DeletePartial()` die `_partial`-Datei desselben Zeitraums
+   und schreibt das ins Protokoll.
+   - M1: Der Beginn der Server-Historie macht ein Jahr **nicht** zum Teilzeitraum. Sonst hieße das erste
+     Jahr eines Symbols für immer `_partial` und würde bei jedem Lauf neu geschrieben. Teilzeitraum ist ein
+     Jahr nur, wenn „Von“ oder „Bis“ es anschneidet oder die lokale Historie nicht bis zum ersten Balken
+     des Servers reicht: `partial = (a > max(y0, SERIES_SERVER_FIRSTDATE) || b != y1)`.
+   - Ticks: unverändert `partial = (a != m0 || b != m1)`.
+2. **Warten beim Start:** `WaitForQuotes()` wählt alle Symbole aus und wartet höchstens 60 s, bis
+   `TERMINAL_CONNECTED` gilt und jedes Symbol `SymbolInfoTick` mit Bid > 0 und `SYMBOL_TRADE_TICK_VALUE` > 0
+   liefert. Erst danach werden `export_info.txt` und `symbols.csv` geschrieben. Bei Zeitüberschreitung
+   steht eine Warnung mit der Zahl und den ersten zehn betroffenen Symbolen im Protokoll, dann geht es
+   weiter.
+
+### Test
+
+Drei Läufe mit US500 in den Ordner `HistoryExport_Test`. Jeder Lauf startete mit dem Terminal über eine
+Startkonfiguration mit `ShutdownTerminal=1`, also im ungünstigsten Fall für Serverzeit und Tickwert.
+
+| Lauf | Zeitraum (Serverzeit) | Ergebnis im Ordner | Protokoll |
+|---|---|---|---|
+| T1 | 2025-12-15 bis 2026-01-01, M1 + Ticks | `US500_M1_2025_partial.csv` (16 236 Kerzen), `US500_ticks_2025-12_partial.csv` (840 944 Ticks) | 0 Fehler |
+| T2 | 2025-12-01 bis 2026-01-01, M1 + Ticks | `US500_ticks_2025-12.csv` (1 557 015 Ticks, 66,9 MB), `_partial` gelöscht; `US500_M1_2025_partial.csv` neu (29 989 Kerzen) | `…US500_ticks_2025-12_partial.csv ersetzt durch die vollständige Datei` |
+| T3 | 2025-01-01 bis 2026-01-01, nur M1 | `US500_M1_2025.csv` (350 318 Kerzen, 18,3 MB), `_partial` gelöscht | `…US500_M1_2025_partial.csv ersetzt durch die vollständige Datei` |
+
+- In allen drei Läufen: `server_utc_offset_hours_now=+3.00` (UTC-Zeit stimmt mit der Uhr des PCs überein)
+  und `tick_value` um 0,00899 in `symbols.csv`. Der Fehler aus dem Probelauf (+0.00 und 0) tritt nicht mehr
+  auf. Eine Warnung aus `WaitForQuotes()` gab es nicht.
+- `US500_M1_2025.csv`: 2025-01-02 01:00 bis 2025-12-31 23:59, alle zwölf Monate, streng aufsteigend.
+- `US500_ticks_2025-12.csv`: 2025-12-01 01:00:15 bis 2025-12-31 23:59:44, 22 Handelstage, aufsteigend,
+  kein Bid > Ask, keine doppelte Zeile. M1 und Ticks decken im Dezember dieselben Minuten ab.
+- **Hinweis für `mt5_data.py`:** In diesem Monat haben 3 191 Paare von Ticks dieselbe Millisekunde, aber
+  verschiedene Kurse. In der Probewoche im September gab es keine. Das sind Daten vom Server, keine
+  doppelt exportierten Zeilen. Doppelte `time_msc` also nicht als Duplikate entfernen.
+
+Die Testdaten (rund 120 MB) liegen noch in `Common\Files\HistoryExport_Test`, die Testkopien des Skripts
+in `MQL5\Scripts` (`HistoryExport_Probe`, `HistoryExport_T1` bis `_T3`). Nichts davon ist im Repo.
+
+### Nächster Schritt
+
+Lauf A (M1) und Lauf B (Ticks) wie in `cloud_notes.md` beschrieben, sobald der Nutzer zustimmt.
+
 ## 2026-10-27: Belege und Diagnose
 
 ### Umgebung
