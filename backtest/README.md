@@ -456,9 +456,9 @@ Was das Video offenlässt, legt `scalping.py` so fest:
 - Keine Einstiege von 16:30 bis 18:00 New York; alle Positionen schließen um 17:00 New York.
 - Ausgeführt wird auf Minutenkerzen. Berührt eine Kerze Stop und Ziel, zählt der Stop.
 
-`check_scalping.py` prüft die Regeln an 16 konstruierten Kursverläufen. `fetch_fx_m1.py` lädt die
-Minutendaten (Oanda, EURUSD und GBPUSD, 2005 bis Mai 2020, Mittelkurse) aus derselben Quelle wie
-`fetch_indices.py`. `scalping_test.py` testet 13 vorab festgelegte Varianten:
+`check_scalping.py` prüft die Regeln an 16 konstruierten Kursverläufen. `fetch_m1.py` lädt die
+Minutendaten (Oanda, EURUSD und GBPUSD, 2005 bis Mai 2020, Mittelkurse; dazu Gold, US-Indizes und
+Bitcoin) aus derselben Quelle wie `fetch_indices.py`. `scalping_test.py` testet 13 vorab festgelegte Varianten:
 - Gewichtung wie im Video: 1 % Risiko je Trade, Ergebnisse in R (Vielfachen des Risikos).
 - Kosten je Seite 0, 0,4 bp (dein Raw-Spread-Konto: Kommission plus etwa ein halber Raw Spread) oder 0,75 bp.
 - In-Sample 2005–2014, Out-of-Sample 2015 bis Mai 2020.
@@ -479,7 +479,7 @@ nach Kosten mit 0,4 bp je Seite:
 | Fibonacci-Rücksetzer mit EMA 200 (1m) | 3.484 | 37 % | 4,6 | −0,020 / −0,302 | −1,25 / −17,84 | −100 % |
 
 Ohne die 70/30-Regel, ohne EMA-Filter oder mit der zweiten Tokio-Spanne sind die Ergebnisse ähnlich oder
-schlechter (`results/scalping.json`).
+schlechter (`results/scalping_fx.json`).
 
 - Nach Kosten ist keine der 13 Varianten Out-of-Sample positiv, auch nicht mit 0,4 bp je Seite. Gewählt
   wurde der Tokio-Ausbruch, Out-of-Sample −0,29 (EURUSD −0,56, GBPUSD +0,12).

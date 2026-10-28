@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FX = os.path.join(HERE, "data", "fx")
+M1_DIR = os.path.join(HERE, "data", "m1")
 SWING_ATR = 3.0
 ATR_N, RSI_N, EMA_N = 14, 14, 200
 TOKYO = {"19-04": (19 * 60, 4 * 60), "20-03": (20 * 60, 3 * 60)}   # New York minutes
@@ -48,7 +48,7 @@ def prepare(m):
 
 
 def load(symbol):
-    return prepare(pd.read_csv(os.path.join(FX, f"{symbol}_M1.csv.gz")))
+    return prepare(pd.read_csv(os.path.join(M1_DIR, f"{symbol}_M1.csv.gz")))
 
 
 class M1:
@@ -441,14 +441,18 @@ def day_plan(m1, m5, b1, sw1, r1, window="19-04", max_fib=3, max_trades=4):
 
 
 # ---------------------------------------------------------------------------------------------- evaluation
-def to_frame(trades, m1, cost_per_side):
+def to_frame(trades, m1, cost_per_side=0.0):
     """Trades with R multiples before and after costs (costs as a fraction of price, per side)."""
     if not trades:
-        return pd.DataFrame(columns=["day", "side", "kind", "r_gross", "r_net", "risk_bp", "reason"])
+        return pd.DataFrame(columns=["day", "side", "kind", "entry", "r_gross", "r_net", "risk_bp", "reason"])
     df = pd.DataFrame(trades)
     risk = (df["entry"] - df["stop"]).abs()
     df["r_gross"] = df["side"] * (df["exit"] - df["entry"]) / risk
     df["risk_bp"] = risk / df["entry"] * 1e4
-    df["r_net"] = df["r_gross"] - 2 * cost_per_side * 1e4 / df["risk_bp"]
     df["day"] = m1.day[df["entry_i"].to_numpy()]
-    return df
+    return with_cost(df, cost_per_side)
+
+
+def with_cost(df, cost_per_side):
+    """r_net: both sides cost cost_per_side x price, 2 x cost / risk in R."""
+    return df.assign(r_net=df["r_gross"] - 2 * cost_per_side * 1e4 / df["risk_bp"].astype(float))
