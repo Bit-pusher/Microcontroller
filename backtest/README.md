@@ -431,6 +431,75 @@ aber klein, im Mittel +0,7 bp (In-Sample) und +1,6 bp (Out-of-Sample) pro Trade.
   erreichbar sind, lässt sich nur mit echten Abend-Spreads prüfen, z. B. mit Tickdaten aus dem
   eigenen MT5-Konto (`mt5/HistoryExport.mq5`).
 
+## Ergebnis 8: 1-Minuten-Scalping nach einem Video
+
+Quelle ist das Video „The ONLY 1 Minute Scalping Guide You'll Ever Need“ (30 Minuten, auf `master`
+abgelegt). Der Ton wurde mit Whisper (small.en über `sherpa-onnx`) transkribiert, die Bilder im Abstand
+von 15 Sekunden angesehen. Der Sprecher handelt EURUSD auf 1 und 5 Minuten und ordnet den Markt einem
+von drei Zuständen zu.
+
+| Marktzustand | Regel im Video |
+|---|---|
+| Seitwärts | Box, wo der Kurs kein höheres Hoch und kein tieferes Tief mehr schafft. Schließt eine Kerze außerhalb, Einstieg in Ausbruchsrichtung; Stop in der Box-Mitte, Ziel 1,5 × Risiko. |
+| Trend | Nach einem Impuls, der die letzte Struktur bricht, und 33 % Rücklauf: Limit-Order beim 0,618-Retracement, Stop am Impulsbeginn, Ziel am Impulsende (1:1,6). Die EMA 200 dient als Bestätigung. |
+| Trendende | RSI-Divergenz: tieferes Tief mit höherem RSI, der erste RSI-Punkt unter 30, der zweite zwischen 30 und 70 („Geheimrezept“). Einstieg auf der ersten bullischen Kerze, Stop am Tief, Ziel 1,5 × Risiko; an Hochs spiegelbildlich. |
+| Tagesplan | Die erste 5-Minuten-Kerze außerhalb der Spanne der Tokio-Session gibt die Tagesrichtung vor und wird gehandelt (Stop halbe Spanne, Ziel 2 × Risiko). Danach Fibonacci-Scalps in dieser Richtung, bis eine RSI-Divergenz gegen sie das Trendende anzeigt; diese ist der letzte Trade. Zwei bis vier Scalps je Trend, 1 % Risiko je Trade. |
+
+Was das Video offenlässt, legt `scalping.py` so fest:
+- Wendepunkte: ein Zickzack, der bei 3 × ATR(14) gegen das laufende Extrem dreht (im Video von Hand
+  gezeichnet).
+- Tokio-Session 19:00–04:00 New York (Variante 20:00–03:00), Ausbrüche bis 12:00 New York.
+- RSI(14) und EMA(200).
+- Tagesplan: höchstens vier Trades am Tag (Ausbruch, bis zu drei Fibonacci-Scalps auf 1 Minute, die
+  Divergenz). Der Tokio-Trade läuft wie im Video neben den Scalps weiter, die Scalps und die Divergenz
+  folgen nacheinander.
+- Keine Einstiege von 16:30 bis 18:00 New York; alle Positionen schließen um 17:00 New York.
+- Ausgeführt wird auf Minutenkerzen. Berührt eine Kerze Stop und Ziel, zählt der Stop.
+
+`check_scalping.py` prüft die Regeln an 16 konstruierten Kursverläufen. `fetch_fx_m1.py` lädt die
+Minutendaten (Oanda, EURUSD und GBPUSD, 2005 bis Mai 2020, Mittelkurse) aus derselben Quelle wie
+`fetch_indices.py`. `scalping_test.py` testet 13 vorab festgelegte Varianten:
+- Gewichtung wie im Video: 1 % Risiko je Trade, Ergebnisse in R (Vielfachen des Risikos).
+- Kosten je Seite 0, 0,4 bp (dein Raw-Spread-Konto: Kommission plus etwa ein halber Raw Spread) oder 0,75 bp.
+- In-Sample 2005–2014, Out-of-Sample 2015 bis Mai 2020.
+
+Out-of-Sample, Mittel aus EURUSD und GBPUSD; Sharpe, Rendite und Drawdown für beide Märkte zusammen,
+nach Kosten mit 0,4 bp je Seite:
+
+| Variante | Trades/Jahr | Treffer | Stop (Pips) | R je Trade vor / nach Kosten | Sharpe vor / nach Kosten | Rendite p. a. (max. DD) |
+|---|---|---|---|---|---|---|
+| Tokio-Ausbruch, Spanne 19–04 NY (5m), gewählt | 244 | 39 % | 20,2 | +0,036 / −0,018 | +0,58 / −0,29 | −5,4 % (−39 %) |
+| Tokio-Ausbruch, Spanne 20–03 NY (5m) | 252 | 36 % | 15,5 | +0,036 / −0,034 | +0,56 / −0,53 | −9,5 % (−58 %) |
+| Tagesplan des Videos (Tokio + Fibonacci + RSI) | 768 | 38 % | 8,7 | −0,003 / −0,189 | −0,07 / −4,88 | −77,6 % (−100 %) |
+| RSI-Divergenz mit 70/30-Regel (5m) | 243 | 41 % | 5,8 | +0,014 / −0,253 | +0,25 / −4,16 | −46,6 % (−97 %) |
+| RSI-Divergenz mit 70/30-Regel (1m) | 1.169 | 42 % | 2,2 | +0,041 / −0,681 | +1,61 / −17,95 | −100 % |
+| Box-Ausbruch (5m) | 488 | 39 % | 8,9 | −0,040 / −0,172 | −1,11 / −4,67 | −57,5 % (−99 %) |
+| Box-Ausbruch (1m) | 2.642 | 38 % | 4,1 | −0,043 / −0,340 | −2,52 / −17,97 | −100 % |
+| Fibonacci-Rücksetzer mit EMA 200 (5m) | 725 | 39 % | 10,8 | −0,011 / −0,129 | −0,33 / −3,80 | −61,9 % (−99 %) |
+| Fibonacci-Rücksetzer mit EMA 200 (1m) | 3.484 | 37 % | 4,6 | −0,020 / −0,302 | −1,25 / −17,84 | −100 % |
+
+Ohne die 70/30-Regel, ohne EMA-Filter oder mit der zweiten Tokio-Spanne sind die Ergebnisse ähnlich oder
+schlechter (`results/scalping.json`).
+
+- Nach Kosten ist keine der 13 Varianten Out-of-Sample positiv, auch nicht mit 0,4 bp je Seite. Gewählt
+  wurde der Tokio-Ausbruch, Out-of-Sample −0,29 (EURUSD −0,56, GBPUSD +0,12).
+- Entscheidend sind die Kosten im Verhältnis zum Stop. Ein Round Trip kostet auf deinem Konto etwa 1 Pip.
+  Bei Stops von 2–5 Pips auf 1 Minute sind das im Mittel 0,3–0,7 R je Trade, beim Tokio-Ausbruch mit
+  20 Pips nur rund 0,05 R.
+- Vor Kosten gibt es kleine Vorteile beim Tokio-Ausbruch (+0,04 R) und bei der RSI-Divergenz auf 1 Minute
+  (+0,04 R, Sharpe +1,6). Das sind beim Tokio-Ausbruch etwa 0,7 Pips je Trade, bei der Divergenz mit
+  2 Pips Stop weniger als 0,1 Pips; der Round Trip kostet rund 1 Pip.
+- Fibonacci-Rücksetzer und Box-Ausbrüche verlieren schon vor Kosten. Bei 1:1,6 bräuchte der
+  Fibonacci-Einstieg eine Trefferquote von 38,2 %. Er erreicht 37 % (1 Minute) und 39 % (5 Minuten),
+  wobei auch kleine Gewinne beim Schließen zum Tagesende als Treffer zählen.
+- Mit 1 % Risiko je Trade ist das Konto bei jeder 1-Minuten-Variante im ersten Jahr aufgebraucht. Bei
+  2 Pips Stop verlangt 1 % Risiko außerdem etwa das 50-Fache des Kontos als Positionsgröße.
+- Die hohe Rangkorrelation zwischen In-Sample und Out-of-Sample (0,96) kommt aus der Zahl der Trades und
+  damit der Kostenlast, nicht aus einem Vorteil.
+- Nicht nachgebildet sind Ermessensteile des Videos (Ablehnungskerzen, „starke“ Kerzen, Linien von Hand).
+  Getestet wurde mit Oanda-Mittelkursen plus festen Kosten bis Mai 2020; mit dem MT5-Export lässt sich
+  derselbe Test auf IC-Markets-Daten mit echten Spreads bis 2026 wiederholen.
+
 ## Fazit
 
 - Als eigenständiges Handelssystem (Long und Short) zeigt der Indikator auf keinem der
@@ -447,6 +516,9 @@ aber klein, im Mittel +0,7 bp (In-Sample) und +1,6 bp (Out-of-Sample) pro Trade.
   der Range und gilt dort auch für zufällig umsortierte Kurse. Als Intraday-System verliert sie nach
   Kosten. Nur die Abend-Range zeigt vor Kosten einen kleinen, beständigen Vorteil; er reicht nur bei
   sehr niedrigen Kosten und hängt Out-of-Sample stark an 2020.
+- 1-Minuten-Scalping (Video): Bei Stops von 2–5 Pips kosten Spread und Kommission 0,3–0,7 R je Trade.
+  Alle Varianten verlieren nach Kosten, auf 1 Minute ist das Konto bei 1 % Risiko je Trade im ersten
+  Jahr aufgebraucht. Am nächsten an der Gewinnschwelle liegt der Tokio-Ausbruch mit Stops um 20 Pips.
 
 ## Einschränkungen
 

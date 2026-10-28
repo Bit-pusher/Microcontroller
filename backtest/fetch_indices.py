@@ -31,12 +31,12 @@ def clone(path):
     subprocess.run(["git", "-C", path, "sparse-checkout", "set", *(f"{FOLDER}/{s}" for s in SYMBOLS)], check=True)
 
 
-def build(path, symbol):
+def build(path, symbol, minutes=5):
     files = glob.glob(os.path.join(path, FOLDER, symbol, "*", "*.csv"))
     m1 = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
     m1["time"] = pd.to_datetime(m1["time"], utc=True)
     m1 = m1.drop_duplicates("time").sort_values("time").set_index("time")
-    m5 = m1.resample("5min", label="left", closed="left").agg(
+    m5 = m1.resample(f"{minutes}min", label="left", closed="left").agg(
         {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}).dropna(subset=["open"])
     m5 = m5.rename(columns={"volume": "ticks"})
     m5.insert(0, "time", (m5.index - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(seconds=1))
