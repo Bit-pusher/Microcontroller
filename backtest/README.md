@@ -455,7 +455,7 @@ Was das Video offenlässt, legt `scalping.py` so fest:
   folgen nacheinander.
 - Keine Einstiege von 16:30 bis 18:00 New York; alle Positionen schließen um 17:00 New York.
 - Ausgeführt wird auf Minutenkerzen: Signale zur nächsten Eröffnung, liegende Limit-Orders und Ziele zu
-  ihrem Preis (auch wenn eine Kerze darüber hinaus eröffnet), Stops zu ihrem Preis oder einer schlechteren
+  ihrem Preis (auch wenn eine Kerze jenseits davon eröffnet), Stops zu ihrem Preis oder einer schlechteren
   Eröffnung. Berührt eine Kerze Stop und Ziel, zählt der Stop.
 
 `check_scalping.py` prüft die Regeln an 17 konstruierten Kursverläufen. `fetch_m1.py` lädt die
@@ -472,15 +472,15 @@ nach Kosten mit 0,4 bp je Seite:
 
 | Variante | Trades/Jahr | Treffer | Stop (Pips) | R je Trade vor / nach Kosten | Sharpe vor / nach Kosten | Rendite p. a. (max. DD) |
 |---|---|---|---|---|---|---|
-| Tokio-Ausbruch, Spanne 19–04 NY (5m), gewählt | 244 | 39 % | 20,2 | +0,036 / −0,018 | +0,58 / −0,29 | −5,4 % (−39 %) |
-| Tokio-Ausbruch, Spanne 20–03 NY (5m) | 252 | 36 % | 15,5 | +0,036 / −0,034 | +0,56 / −0,53 | −9,5 % (−58 %) |
-| Tagesplan des Videos (Tokio + Fibonacci + RSI) | 768 | 38 % | 8,7 | −0,003 / −0,189 | −0,07 / −4,88 | −77,6 % (−100 %) |
-| RSI-Divergenz mit 70/30-Regel (5m) | 243 | 41 % | 5,8 | +0,014 / −0,253 | +0,25 / −4,16 | −46,6 % (−97 %) |
-| RSI-Divergenz mit 70/30-Regel (1m) | 1.169 | 42 % | 2,2 | +0,041 / −0,681 | +1,61 / −17,95 | −100 % |
-| Box-Ausbruch (5m) | 488 | 39 % | 8,9 | −0,040 / −0,172 | −1,11 / −4,67 | −57,5 % (−99 %) |
-| Box-Ausbruch (1m) | 2.642 | 38 % | 4,1 | −0,043 / −0,340 | −2,52 / −17,97 | −100 % |
-| Fibonacci-Rücksetzer mit EMA 200 (5m) | 725 | 39 % | 10,8 | −0,011 / −0,129 | −0,33 / −3,80 | −61,9 % (−99 %) |
-| Fibonacci-Rücksetzer mit EMA 200 (1m) | 3.484 | 37 % | 4,6 | −0,020 / −0,302 | −1,25 / −17,84 | −100 % |
+| Tokio-Ausbruch, Spanne 19–04 NY (5m), gewählt | 244 | 39 % | 20,2 | +0,036 / −0,018 | +0,58 / −0,29 | −5,4 % (−40 %) |
+| Tokio-Ausbruch, Spanne 20–03 NY (5m) | 252 | 36 % | 15,5 | +0,036 / −0,035 | +0,55 / −0,53 | −9,6 % (−58 %) |
+| Tagesplan des Videos (Tokio + Fibonacci + RSI) | 768 | 38 % | 8,7 | −0,004 / −0,146 | −0,09 / −3,76 | −65,6 % (−100 %) |
+| RSI-Divergenz mit 70/30-Regel (5m) | 243 | 41 % | 5,8 | +0,001 / −0,192 | +0,01 / −3,28 | −34,1 % (−90 %) |
+| RSI-Divergenz mit 70/30-Regel (1m) | 1.169 | 42 % | 2,2 | +0,026 / −0,366 | +0,89 / −12,02 | −91,7 % (−100 %) |
+| Box-Ausbruch (5m) | 488 | 39 % | 8,9 | −0,042 / −0,168 | −1,16 / −4,58 | −56,1 % (−99 %) |
+| Box-Ausbruch (1m) | 2.642 | 38 % | 4,1 | −0,040 / −0,283 | −2,25 / −15,26 | −99,8 % (−100 %) |
+| Fibonacci-Rücksetzer mit EMA 200 (5m) | 725 | 39 % | 10,8 | −0,011 / −0,122 | −0,33 / −3,62 | −59,2 % (−99 %) |
+| Fibonacci-Rücksetzer mit EMA 200 (1m) | 3.484 | 37 % | 4,6 | −0,022 / −0,243 | −1,38 / −14,89 | −99,9 % (−100 %) |
 
 Ohne die 70/30-Regel, ohne EMA-Filter oder mit der zweiten Tokio-Spanne sind die Ergebnisse ähnlich oder
 schlechter (`results/scalping_fx.json`).
@@ -488,21 +488,65 @@ schlechter (`results/scalping_fx.json`).
 - Nach Kosten ist keine der 13 Varianten Out-of-Sample positiv, auch nicht mit 0,4 bp je Seite. Gewählt
   wurde der Tokio-Ausbruch, Out-of-Sample −0,29 (EURUSD −0,56, GBPUSD +0,12).
 - Entscheidend sind die Kosten im Verhältnis zum Stop. Ein Round Trip kostet auf deinem Konto etwa 1 Pip.
-  Bei Stops von 2–5 Pips auf 1 Minute sind das im Mittel 0,3–0,7 R je Trade, beim Tokio-Ausbruch mit
+  Bei Stops von 2–5 Pips auf 1 Minute sind das im Mittel 0,2–0,4 R je Trade, beim Tokio-Ausbruch mit
   20 Pips nur rund 0,05 R.
 - Vor Kosten gibt es kleine Vorteile beim Tokio-Ausbruch (+0,04 R) und bei der RSI-Divergenz auf 1 Minute
-  (+0,04 R, Sharpe +1,6). Das sind beim Tokio-Ausbruch etwa 0,7 Pips je Trade, bei der Divergenz mit
+  (+0,03 R, Sharpe +0,9). Das sind beim Tokio-Ausbruch etwa 0,7 Pips je Trade, bei der Divergenz mit
   2 Pips Stop weniger als 0,1 Pips; der Round Trip kostet rund 1 Pip.
 - Fibonacci-Rücksetzer und Box-Ausbrüche verlieren schon vor Kosten. Bei 1:1,6 bräuchte der
   Fibonacci-Einstieg eine Trefferquote von 38,2 %. Er erreicht 37 % (1 Minute) und 39 % (5 Minuten),
   wobei auch kleine Gewinne beim Schließen zum Tagesende als Treffer zählen.
-- Mit 1 % Risiko je Trade ist das Konto bei jeder 1-Minuten-Variante im ersten Jahr aufgebraucht. Bei
-  2 Pips Stop verlangt 1 % Risiko außerdem etwa das 50-Fache des Kontos als Positionsgröße.
-- Die hohe Rangkorrelation zwischen In-Sample und Out-of-Sample (0,96) kommt aus der Zahl der Trades und
+- Auf 1 Minute verlieren alle Varianten 92–100 % im Jahr, obwohl wegen der Hebelgrenze 44–81 % ihrer
+  Trades weniger als 1 % riskieren. Bei 2 Pips Stop verlangt 1 % Risiko etwa das 50-Fache des Kontos als
+  Positionsgröße.
+- Die hohe Rangkorrelation zwischen In-Sample und Out-of-Sample (0,97) kommt aus der Zahl der Trades und
   damit der Kostenlast, nicht aus einem Vorteil.
 - Nicht nachgebildet sind Ermessensteile des Videos (Ablehnungskerzen, „starke“ Kerzen, Linien von Hand).
   Getestet wurde mit Oanda-Mittelkursen plus festen Kosten bis Mai 2020; mit dem MT5-Export lässt sich
   derselbe Test auf IC-Markets-Daten mit echten Spreads bis 2026 wiederholen.
+
+### Andere Märkte: Gold, US-Indizes, Bitcoin
+
+`fetch_m1.py` lädt aus derselben Quelle auch Gold (XAUUSD, März 2006 bis Mai 2020) und die CFDs auf
+S&P 500, Nasdaq 100 und Russell 2000 (2005 bis Mai 2020), alle als Oanda-Mittelkurse. Dazu kommt Bitcoin
+von Bitstamp (BTCUSD, Handelskurse, 2012 bis Januar 2018); Minuten ohne Handel sind weggelassen (35 %,
+in den Testjahren 2014–2017 noch 8–32 %). Silber, Dow Jones und Ether enthält die Quelle nicht oder nur
+für 2018. Regeln, Uhrzeiten und die 13 Varianten sind dieselben wie bei FX. Gewählt wird wieder je Gruppe
+nach dem mittleren In-Sample-Sharpe bei den mittleren Kosten:
+
+| Gruppe | Kosten je Seite | In-Sample / Out-of-Sample |
+|---|---|---|
+| Gold | 0 / 0,4 / 0,75 bp wie bei FX (Kommission 3,25 EUR je Lot, je nach Goldpreis 0,1–0,35 bp, dazu der halbe Raw Spread) | 2006–2014 / 2015 bis Mai 2020 |
+| US-Indizes | 0 / 0,3 / 1 bp (0,3 bp: halber US500-Spread der Probe, keine Kommission; 1 bp wie in Ergebnis 7) | 2005–2014 / 2015 bis Mai 2020 |
+| Bitcoin | 0 / 1 / 5 bp (1 bp: enger CFD-Spread; 5 bp: Taker-Gebühr bei Binance-Futures) | 2014–2015 / 2016 bis Januar 2018 |
+
+Out-of-Sample, Mittel über die Märkte einer Gruppe; Sharpe, Rendite und Drawdown für die Gruppe zusammen,
+nach den mittleren Kosten. Die letzte Spalte zählt die Varianten mit positivem Out-of-Sample-Sharpe:
+
+| Gruppe | In-Sample gewählt | Stop | R je Trade vor / nach Kosten | Sharpe vor / nach Kosten | Rendite p. a. (max. DD) | positiv nach / vor Kosten |
+|---|---|---|---|---|---|---|
+| FX (zum Vergleich) | Tokio-Ausbruch 19–04 | 16 bp | +0,036 / −0,018 | +0,58 / −0,29 | −5,4 % (−40 %) | 0 / 6 von 13 |
+| Gold | Tokio-Ausbruch 19–04 | 25 bp | +0,015 / −0,019 | +0,17 / −0,23 | −6,1 % (−43 %) | 0 / 8 von 13 |
+| US-Indizes | Tokio-Ausbruch 19–04 | 20 bp | +0,003 / −0,032 | +0,04 / −0,46 | −8,9 % (−51 %) | 0 / 5 von 13 |
+| Bitcoin | Fibonacci-Rücksetzer ohne Filter (1m) | 31 bp | +0,112 / +0,021 | +4,18 / +0,79 | +33,8 % (−98 %) | 5 / 10 von 13 |
+
+- Auf Gold und den Indizes ist wie bei FX nach Kosten keine Variante Out-of-Sample positiv. Der gewählte
+  Tokio-Ausbruch verliert auf Gold, S&P 500 und Russell 2000, auf dem Nasdaq 100 liegt er bei +0,04.
+- Vor Kosten zeigen die RSI-Divergenzen kleine Vorteile: auf Gold +0,044 R (5 Minuten) und +0,048 R
+  (1 Minute, Sharpe +1,15), auf den Indizes +0,033 R (5 Minuten). Bei Stops von 3–8 bp kosten Spread und
+  Kommission aber 0,1–0,25 R je Trade, das Drei- bis Fünffache des Vorteils.
+- Fibonacci-Rücksetzer verlieren auch auf Gold und den Indizes schon vor Kosten (−0,03 bis −0,08 R).
+- Bitcoin ist die Ausnahme, überzeugt aber nicht:
+  - Die In-Sample-Wahl (Fibonacci auf 1 Minute) kam In-Sample auf ein Sharpe von 7,0, Out-of-Sample nur
+    auf 0,79 bei 98 % Drawdown, mit 5 bp je Seite auf −12,7. Ihr Vorteil vor Kosten schrumpft über die
+    Jahre: +0,5 R (2012), +0,4 R (2014), +0,2–0,3 R (2015–2016), ±0 (2017). Das passt eher zur
+    Anfangszeit eines wenig liquiden Marktes als zu einem dauerhaften Muster.
+  - Der Tokio-Ausbruch ist Out-of-Sample positiv (19–04: Sharpe +1,73 bei 1 bp, +0,21 bei 5 bp), war
+    In-Sample aber negativ (−0,84). Der Gewinn kommt aus 2017 (+0,23 R je Trade, 2014–2016 −0,09 bis
+    +0,02) und aus Long-Ausbrüchen (2016–2017 +0,26 R, Shorts −0,08 R), also aus dem Anstieg von rund
+    430 auf 13.900 USD.
+  - Bitstamp-Handelskurse von 2014–2017 sind ein anderer Markt als BTCUSD heute. Prüfen lässt sich das
+    erst mit dem IC-Markets-Export (BTCUSD und ETHUSD sind in Lauf A).
 
 ## Fazit
 
@@ -520,9 +564,11 @@ schlechter (`results/scalping_fx.json`).
   der Range und gilt dort auch für zufällig umsortierte Kurse. Als Intraday-System verliert sie nach
   Kosten. Nur die Abend-Range zeigt vor Kosten einen kleinen, beständigen Vorteil; er reicht nur bei
   sehr niedrigen Kosten und hängt Out-of-Sample stark an 2020.
-- 1-Minuten-Scalping (Video): Bei Stops von 2–5 Pips kosten Spread und Kommission 0,3–0,7 R je Trade.
-  Alle Varianten verlieren nach Kosten, auf 1 Minute ist das Konto bei 1 % Risiko je Trade im ersten
-  Jahr aufgebraucht. Am nächsten an der Gewinnschwelle liegt der Tokio-Ausbruch mit Stops um 20 Pips.
+- 1-Minuten-Scalping (Video): Bei Stops von 2–5 Pips kosten Spread und Kommission 0,2–0,4 R je Trade.
+  Auf FX, Gold und US-Indizes verlieren alle Varianten nach Kosten, auf 1 Minute 76–100 % des Kontos im
+  Jahr. Am nächsten an der Gewinnschwelle liegt der Tokio-Ausbruch mit Stops um 20 Pips. Nur auf Bitcoin
+  2016–2017 sind einige Varianten positiv, getragen vom Anstieg 2017 und von einem Vorteil, der über die
+  Jahre schwindet.
 
 ## Einschränkungen
 
