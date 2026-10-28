@@ -18,9 +18,11 @@ What the video leaves to the eye is fixed here:
 - the Tokyo session: 19:00-04:00 New York (the usual forex session clock), breakouts until 12:00 New York;
 - RSI(14), EMA(200); no entries from 16:30 to 18:00 New York, every position is closed at 17:00 New York,
   the end of the forex day.
-Execution on 1-minute bars: a signal at a bar close fills at the next bar's open, a limit order at its price
-(or a better open), stops and targets at their price (or a worse open); a bar touching both counts as the
-stop. A limit order's fill bar can stop the trade out but never reach the target.
+Execution on 1-minute bars: a signal at a bar close fills at the next bar's open; limit orders and targets
+fill at their price, also when a bar opens beyond it (a resting order is taken as the price passes it, the
+data only skip minutes); stops at their price or a worse open. A bar touching stop and target counts as the
+stop. A limit order's fill bar can stop the trade out but never reach the target. Stops closer than MIN_RISK
+of the price (rounding noise) give no trade.
 """
 import os
 
@@ -37,6 +39,7 @@ NO_ENTRY = (16 * 60 + 30, 18 * 60)
 RR_BOX, RR_TOKYO, RR_DIV = 1.5, 2.0, 1.5
 FIB_TRIGGER, FIB_ENTRY = 0.33, 0.618
 DIV_WINDOW = 5                       # bars back from the bullish candle in which the lower low may lie
+MIN_RISK = 1e-6                      # smallest stop distance as a fraction of the price (0.01 bp)
 
 
 # ---------------------------------------------------------------------------------------------- data
@@ -149,7 +152,7 @@ def exit_trade(m1, side, start, stop, target, end):
         return start + k, (min(stop, o[k]) if side > 0 else max(stop, o[k])), "stop"
     if len(t):
         k = t[0]
-        return start + k, (max(target, o[k]) if side > 0 else min(target, o[k])), "target"
+        return start + k, target, "target"
     return end, m1.c[end], "day end"
 
 
@@ -159,7 +162,7 @@ def market_trade(m1, kind, side, e, stop, rr=None, target=None):
         return None
     entry = m1.o[e]
     risk = (entry - stop) * side
-    if not risk > 0:
+    if not risk > MIN_RISK * entry:
         return None
     target = entry + side * rr * risk if target is None else target
     if (target - entry) * side <= 0:
@@ -265,8 +268,11 @@ def rsi_divergence(m1, b, sw, r, sauce=True):
 
 def _fib_order(m1, side, start, impulse_end, impulse_start):
     """Pending limit at the 0.618 retracement from 1-minute bar `start` on. Returns the trade, or
-    ("cancel", bar, new impulse end) when price extends the impulse first, or ("void", bar) when it breaks
-    the impulse start, or None at the day end."""
+    ("cancel", bar, new impulse end) when price extends the impulse first, or ("void", bar) when it would
+    fill in the hours without entries, or None at the day end. An order that is marketable when placed (the
+    close before `start` is past the limit) fills at the next open or the limit, whichever is better, and is
+    void if that open is past the impulse start; a resting order fills at the limit, also when a bar opens
+    past it, and a fill bar opening past the impulse start stops the trade at that open."""
     end = m1.day_end[start] if start < m1.n else m1.n - 1
     if start > end:
         return None
@@ -276,11 +282,9 @@ def _fib_order(m1, side, start, impulse_end, impulse_start):
     if side < 0:      # short: sell limit above, the impulse end is the low
         fill = np.flatnonzero(h >= limit)
         ext = np.flatnonzero(l < impulse_end)
-        void = np.flatnonzero(h > impulse_start)
     else:
         fill = np.flatnonzero(l <= limit)
         ext = np.flatnonzero(h > impulse_end)
-        void = np.flatnonzero(l < impulse_start)
     f = fill[0] if len(fill) else None
     x = ext[0] if len(ext) else None
     if x is not None and (f is None or x <= f):
@@ -289,17 +293,19 @@ def _fib_order(m1, side, start, impulse_end, impulse_start):
         return ("cancel", start + k, new_end)
     if f is None:
         return None
-    if len(void) and void[0] < f:
-        return ("void", start + void[0])
     fi = start + f
     if not m1.entry_ok[fi]:
         return ("void", fi)
-    entry = max(limit, o[f]) if side < 0 else min(limit, o[f])
     stop, target = impulse_start, impulse_end
-    if (stop - entry) * -side <= 0:                       # opened beyond the stop
-        return ("void", fi)
+    placed = m1.c[start - 1]
+    if f == 0 and ((placed >= limit) if side < 0 else (placed <= limit)):
+        entry = max(limit, o[0]) if side < 0 else min(limit, o[0])
+        if (entry >= stop) if side < 0 else (entry <= stop):
+            return ("void", fi)
+    else:
+        entry = limit
     if (m1.h[fi] >= stop) if side < 0 else (m1.l[fi] <= stop):
-        xi, px, why = fi, stop, "stop"
+        xi, px, why = fi, (max(stop, o[f]) if side < 0 else min(stop, o[f])), "stop"
     else:
         xi, px, why = exit_trade(m1, side, fi + 1, stop, target, m1.day_end[fi])
     return {"kind": "fib", "side": side, "entry_i": fi, "entry": entry, "stop": stop, "target": target,

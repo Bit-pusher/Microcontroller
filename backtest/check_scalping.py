@@ -52,10 +52,12 @@ def main():
     ok &= check("zigzag kinds / bars / prices / confirmations",
                 (list(sw[0]), list(sw[1]), list(sw[2]), list(sw[3])), ([1, -1, 1], [2, 5, 7], [15, 8, 14], [3, 6, 8]))
 
-    # exits: stop wins a tie, a gap through the stop fills at the open, otherwise the target, else the day end
+    # exits: stop wins a tie, a gap through the stop fills at the open, a target at its price (also after a
+    # gap), else the day end
     for name, bar1, want in (("tie -> stop", (100.5, 102.5, 98.5, 101), (1, 99.0, "stop")),
                              ("gap through stop", (98, 98.5, 97, 98), (1, 98.0, "stop")),
                              ("target", (100.5, 102.5, 100, 102), (1, 102.0, "target")),
+                             ("gap through target", (102.5, 103, 102.2, 102.8), (1, 102.0, "target")),
                              ("day end", (100.5, 101, 99.5, 100.8), (1, 100.8, "day end"))):
         _, m1, _, _ = setup("2017-01-10 10:00", [(100, 101, 99.5, 100.5), bar1])
         ok &= check(f"exit, {name}", tuple(sc.exit_trade(m1, 1, 0, 99, 102, 1)), want)
@@ -115,18 +117,21 @@ def main():
     t = sc.fib_pullback(m1, b, sw)
     ok &= check("Fibonacci, limit and stop in one bar", trade_tuple(t[0]) if t else None,
                 (-1, 104.27, 110.0, 95.0, 110.0, "stop"))
-    # opening above the impulse start: the order is void
+    # a jump above the impulse start: the resting limit fills at its price, the stop at the worse open
     rows = base + [(110.5, 111, 110.2, 110.8), (110.8, 111, 104, 105)]
     _, m1, b, sw = setup("2017-01-10 10:00", rows)
-    ok &= check("Fibonacci, open above the impulse start: no trade", sc.fib_pullback(m1, b, sw), [])
+    t = sc.fib_pullback(m1, b, sw)
+    ok &= check("Fibonacci, open above the impulse start", trade_tuple(t[0]) if t else None,
+                (-1, 104.27, 110.0, 95.0, 110.5, "stop"))
     # a new low before the fill cancels the order and the impulse 110 -> 93 is measured again (limit 103.506);
-    # zigzag threshold 6 so that the bounce to 100.5 is no swing of its own
+    # zigzag threshold 6 so that the bounce to 100.5 is no swing of its own. Before that, the long limit of the
+    # impulse 100 -> 110 (103.82, resting below the close of 104) is filled by the jump to 99 and stopped there
     rows = [106, 100, 100, 106, 110, 104, 99, 95, (95.5, 100.5, 95.2, 100), (100, 100.2, 93, 93.5),
             (93.5, 99, 93.4, 98.9), (98.9, 104, 98.8, 103.8), (103.8, 103.9, 92.9, 93)]
     _, m1, b, sw = setup("2017-01-10 10:00", rows, thr=6.0)
     t = sc.fib_pullback(m1, b, sw)
-    ok &= check("Fibonacci, impulse extended before the fill", trade_tuple(t[0]) if t else None,
-                (-1, 93 + 0.618 * 17, 110.0, 93.0, 93.0, "target"))
+    ok &= check("Fibonacci, impulse extended before the fill", tuple(trade_tuple(x) for x in t),
+                ((1, 103.82, 100.0, 110.0, 99.0, "stop"), (-1, 93 + 0.618 * 17, 110.0, 93.0, 93.0, "target")))
 
     # R multiples and costs: risk 10 bp, 0.4 bp per side -> 0.08 R of costs
     df = sc.to_frame([{"side": 1, "entry": 100.0, "stop": 99.9, "exit": 100.15, "entry_i": 0, "kind": "x",

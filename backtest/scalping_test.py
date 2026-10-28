@@ -1,7 +1,9 @@
 """The scalping rules of scalping.py on 1 and 5 minutes: FX (EURUSD, GBPUSD), gold, US index CFDs and Bitcoin.
 
 Pre-declared variants (VARIANTS), each as the video sizes its trades: 1 % of the account at risk per trade,
-so results are in R (multiples of the risk) and costs count relative to the stop distance. Each market group
+so results are in R (multiples of the risk) and costs count relative to the stop distance. The position is at
+most LEVERAGE times the account; a trade with a stop closer than RISK / LEVERAGE of the price risks less
+than 1 % and counts with that smaller weight in the account and in the mean R. Each market group
 (GROUPS) has three costs per side as a fraction of price:
 - FX and gold: 0, 0.4 bp (the user's IC Markets Raw Spread account: 3.25 EUR commission per lot and side
   plus about half a raw spread) and 0.75 bp (a retail spread account);
@@ -36,7 +38,7 @@ GROUPS = {   # markets, costs per side, the cost the variant is chosen at, in-sa
     "crypto": {"markets": ["BTCUSD"], "costs": {"0 bp": 0.0, "1 bp": 0.0001, "5 bp": 0.0005}, "main": "1 bp",
                "dates": ("2014-01-01", "2016-01-01", "2018-01-09")},
 }
-RISK = 0.01
+RISK, LEVERAGE = 0.01, 30
 
 
 def prepare_market(symbol):
@@ -93,10 +95,12 @@ def market_frames(symbol):
 
 
 def daily(df, days, start, end):
-    """Account returns per trading day at RISK per trade (trades counted on their entry day)."""
+    """Account returns per trading day (trades counted on their entry day); w is the share of RISK a trade
+    can take within LEVERAGE."""
     x = df[(df["day"] >= start) & (df["day"] < end)]
+    x = x.assign(w=np.minimum(1.0, LEVERAGE * x["risk_bp"].astype(float) / 1e4 / RISK))
     cal = np.union1d(days[(days >= start) & (days < end)], x["day"].to_numpy())
-    return (x.groupby("day")["r_net"].sum() * RISK).reindex(cal, fill_value=0.0), x
+    return (x["w"] * x["r_net"]).groupby(x["day"]).sum().mul(RISK).reindex(cal, fill_value=0.0), x
 
 
 def metrics(ret, x, start, end):
@@ -104,13 +108,16 @@ def metrics(ret, x, start, end):
     sd = ret.std()
     sharpe = float(ret.mean() / sd * np.sqrt(len(ret) / years)) if sd > 0 else 0.0
     eq = (1 + ret.clip(lower=-1.0)).cumprod()                   # a day losing more than the account ends it
-    gains, losses = x["r_net"][x["r_net"] > 0].sum(), -x["r_net"][x["r_net"] <= 0].sum()
+    w = x["w"]
+    rg, rn = w * x["r_gross"], w * x["r_net"]
+    gains, losses = rn[rn > 0].sum(), -rn[rn <= 0].sum()
     stop = x["risk_bp"] * x["entry"] / 1e4
     return {"sharpe": sharpe, "t": sharpe * np.sqrt(years), "cagr": float(eq.iloc[-1] ** (1 / years) - 1),
             "max_dd": float((eq / eq.cummax() - 1).min()), "trades_per_year": len(x) / years,
             "win_rate": float((x["r_gross"] > 0).mean()) if len(x) else None,
-            "r_gross": float(x["r_gross"].mean()) if len(x) else None,
-            "r_net": float(x["r_net"].mean()) if len(x) else None,
+            "r_gross": float(rg.sum() / w.sum()) if len(x) else None,          # weighted by w
+            "r_net": float(rn.sum() / w.sum()) if len(x) else None,
+            "below_full_risk": float((w < 1).mean()) if len(x) else None,
             "profit_factor": float(gains / losses) if losses > 0 else None,
             "stop": float(stop.median()) if len(x) else None,                    # in price units
             "stop_bp": float(x["risk_bp"].median()) if len(x) else None}
@@ -135,7 +142,7 @@ def evaluate(group, g, data):
             for p, (pa, pe) in periods.items():
                 pr = pd.concat(port[p], axis=1, sort=True).fillna(0.0).mean(axis=1)
                 row["portfolio"].setdefault(cost_name, {})[p] = metrics(pr, pd.DataFrame(
-                    {"r_net": [], "r_gross": [], "risk_bp": [], "entry": []}), pa, pe)
+                    {"r_net": [], "r_gross": [], "risk_bp": [], "entry": [], "w": []}), pa, pe)
         row["is_mean_sharpe"] = float(np.mean([row["markets"][s][main]["is"]["sharpe"] for s in markets]))
         row["oos_mean_sharpe"] = float(np.mean([row["markets"][s][main]["oos"]["sharpe"] for s in markets]))
         rows.append(row)

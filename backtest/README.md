@@ -454,12 +454,16 @@ Was das Video offenlässt, legt `scalping.py` so fest:
   Divergenz). Der Tokio-Trade läuft wie im Video neben den Scalps weiter, die Scalps und die Divergenz
   folgen nacheinander.
 - Keine Einstiege von 16:30 bis 18:00 New York; alle Positionen schließen um 17:00 New York.
-- Ausgeführt wird auf Minutenkerzen. Berührt eine Kerze Stop und Ziel, zählt der Stop.
+- Ausgeführt wird auf Minutenkerzen: Signale zur nächsten Eröffnung, liegende Limit-Orders und Ziele zu
+  ihrem Preis (auch wenn eine Kerze darüber hinaus eröffnet), Stops zu ihrem Preis oder einer schlechteren
+  Eröffnung. Berührt eine Kerze Stop und Ziel, zählt der Stop.
 
-`check_scalping.py` prüft die Regeln an 16 konstruierten Kursverläufen. `fetch_m1.py` lädt die
+`check_scalping.py` prüft die Regeln an 17 konstruierten Kursverläufen. `fetch_m1.py` lädt die
 Minutendaten (Oanda, EURUSD und GBPUSD, 2005 bis Mai 2020, Mittelkurse; dazu Gold, US-Indizes und
 Bitcoin) aus derselben Quelle wie `fetch_indices.py`. `scalping_test.py` testet 13 vorab festgelegte Varianten:
-- Gewichtung wie im Video: 1 % Risiko je Trade, Ergebnisse in R (Vielfachen des Risikos).
+- Gewichtung wie im Video: 1 % Risiko je Trade, Ergebnisse in R (Vielfachen des Risikos). Die Position ist
+  höchstens das 30-Fache des Kontos: Bei einem Stop unter 3,3 bp riskiert ein Trade weniger als 1 % und
+  zählt im mittleren R mit diesem kleineren Gewicht.
 - Kosten je Seite 0, 0,4 bp (dein Raw-Spread-Konto: Kommission plus etwa ein halber Raw Spread) oder 0,75 bp.
 - In-Sample 2005–2014, Out-of-Sample 2015 bis Mai 2020.
 
