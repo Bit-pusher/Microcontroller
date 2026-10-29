@@ -2,6 +2,22 @@
 
 Neueste Einträge oben. Der lokale Agent liest diese Datei nach `git pull`.
 
+## 2026-10-29: Bitte den neuen EA kompilieren und kurz testen
+
+Neu im Repo: `ScalpingVideoEA/` (EA `ScalpingVideoEA.mq5` und Regelkern `ScalpingCore.mqh`). In der Cloud gibt
+es keinen MetaEditor; den Kern habe ich als C++ geprüft, die MT5-Aufrufe des EA aber noch nie kompiliert.
+Erst nach dem laufenden Export, und nur wenn der Nutzer zustimmt:
+
+1. Den Ordner `ScalpingVideoEA` nach `MQL5/Experts/` kopieren und `ScalpingVideoEA.mq5` kompilieren, z. B.
+   `metaeditor64.exe /compile:"<Pfad>\ScalpingVideoEA.mq5" /log`. Fehler und Warnungen mit Zeilennummer in
+   `backtest/mt5/export_report.md` eintragen.
+2. Kompiliert er: Strategietester, EURUSD, Modell „Jeder Tick basierend auf realen Ticks“, Zeitraum
+   2026-09-01 bis 2026-09-30, Einzahlung 10.000 EUR, Standardeinstellungen (Tagesplan). Dann dasselbe mit
+   „Strategie: Tokio-Ausbruch“. Je Lauf berichten: Zahl der Trades, Nettogewinn, maximaler Drawdown, ob die
+   Deals eine Kommission enthalten, und die Zeilen „… Trades, Trefferquote …“ aus dem Journal des Testers.
+3. Nur im Tester laufen lassen, nicht auf einem Chart des Handelskontos. Keine Kontonummer, kein Kontostand
+   in den Bericht.
+
 ## 2026-10-27: Probelauf geprüft, nächste Schritte
 
 ### Unabhängige Prüfung der Probe (US500, 2026-09-14 bis 09-18)

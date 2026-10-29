@@ -450,15 +450,20 @@ Was das Video offenlässt, legt `scalping.py` so fest:
   gezeichnet).
 - Tokio-Session 19:00–04:00 New York (Variante 20:00–03:00), Ausbrüche bis 12:00 New York.
 - RSI(14) und EMA(200).
+- Fibonacci: immer nur eine Order oder ein Trade. Solange eine Limit-Order wartet oder ein Trade läuft, löst
+  kein Impuls aus. Läuft der Impuls vor der Ausführung weiter, wird die Order gelöscht und der Impuls neu
+  vermessen.
 - Tagesplan: höchstens vier Trades am Tag (Ausbruch, bis zu drei Fibonacci-Scalps auf 1 Minute, die
-  Divergenz). Der Tokio-Trade läuft wie im Video neben den Scalps weiter, die Scalps und die Divergenz
-  folgen nacheinander.
+  Divergenz). Der Tokio-Trade läuft wie im Video neben den Scalps weiter. Die Divergenz löscht eine wartende
+  Fibonacci-Order und wird nur gehandelt, wenn kein Fibonacci-Trade offen ist.
 - Keine Einstiege von 16:30 bis 18:00 New York; alle Positionen schließen um 17:00 New York.
 - Ausgeführt wird auf Minutenkerzen: Signale zur nächsten Eröffnung, liegende Limit-Orders und Ziele zu
   ihrem Preis (auch wenn eine Kerze jenseits davon eröffnet), Stops zu ihrem Preis oder einer schlechteren
   Eröffnung. Berührt eine Kerze Stop und Ziel, zählt der Stop.
+- Entschieden wird wie in einem Expert Advisor nur mit dem, was bis zur Entscheidung bekannt ist. Den EA dazu
+  gibt es in `ScalpingVideoEA/` (siehe unten).
 
-`check_scalping.py` prüft die Regeln an 17 konstruierten Kursverläufen. `fetch_m1.py` lädt die
+`check_scalping.py` prüft die Regeln an 18 konstruierten Kursverläufen. `fetch_m1.py` lädt die
 Minutendaten (Oanda, EURUSD und GBPUSD, 2005 bis Mai 2020, Mittelkurse; dazu Gold, US-Indizes und
 Bitcoin) aus derselben Quelle wie `fetch_indices.py`. `scalping_test.py` testet 13 vorab festgelegte Varianten:
 - Gewichtung wie im Video: 1 % Risiko je Trade, Ergebnisse in R (Vielfachen des Risikos). Die Position ist

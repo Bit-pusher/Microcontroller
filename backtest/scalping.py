@@ -18,11 +18,12 @@ What the video leaves to the eye is fixed here:
 - the Tokyo session: 19:00-04:00 New York (the usual forex session clock), breakouts until 12:00 New York;
 - RSI(14), EMA(200); no entries from 16:30 to 18:00 New York, every position is closed at 17:00 New York,
   the end of the forex day.
-Execution on 1-minute bars: a signal at a bar close fills at the next bar's open; limit orders and targets
-fill at their price, also when a bar opens beyond it (a resting order is taken as the price passes it, the
-data only skip minutes); stops at their price or a worse open. A bar touching stop and target counts as the
-stop. A limit order's fill bar can stop the trade out but never reach the target. Stops closer than MIN_RISK
-of the price (rounding noise) give no trade.
+Execution on 1-minute bars, without looking ahead (as an expert advisor would trade it, see
+ScalpingVideoEA/): a signal at a bar close fills at the next bar's open; limit orders and targets fill at their
+price, also when a bar opens beyond it (a resting order is taken as the price passes it, the data only skip
+minutes); stops at their price or a worse open. A bar touching stop and target counts as the stop. A limit
+order's fill bar can stop the trade out but never reach the target. Stops closer than MIN_RISK of the price
+(rounding noise) give no trade.
 """
 import os
 
@@ -266,101 +267,104 @@ def rsi_divergence(m1, b, sw, r, sauce=True):
     return trades
 
 
-def _fib_order(m1, side, start, impulse_end, impulse_start):
-    """Pending limit at the 0.618 retracement from 1-minute bar `start` on. Returns the trade, or
-    ("cancel", bar, new impulse end) when price extends the impulse first, or ("void", bar) when it would
-    fill in the hours without entries, or None at the day end. An order that is marketable when placed (the
-    close before `start` is past the limit) fills at the next open or the limit, whichever is better, and is
-    void if that open is past the impulse start; a resting order fills at the limit, also when a bar opens
-    past it, and a fill bar opening past the impulse start stops the trade at that open."""
-    end = m1.day_end[start] if start < m1.n else m1.n - 1
-    if start > end:
-        return None
+def _fib_order(m1, side, e, impulse_end, impulse_start):
+    """The order of a Fibonacci trigger, placed at the open of 1-minute bar e (the bar after the trigger bar).
+    An open already past the impulse start places no order: ("void", e, False). An open past the 0.618 level
+    fills there (the limit is marketable). Otherwise the limit rests and fills at its price, also when a bar
+    opens past it; it is void at the first bar without entries, cancelled when price extends the impulse first
+    ("cancel", bar, new impulse end), and expires at the day end. In one bar the void comes first, then the
+    cancel, then the fill. Returns the trade, or (kind, bar, ...) for an order that ends without one."""
     rng = (impulse_start - impulse_end) * -side          # size of the impulse, positive
     limit = impulse_end + (FIB_ENTRY * rng if side < 0 else -FIB_ENTRY * rng)
-    h, l, o = m1.h[start:end + 1], m1.l[start:end + 1], m1.o[start:end + 1]
-    if side < 0:      # short: sell limit above, the impulse end is the low
-        fill = np.flatnonzero(h >= limit)
-        ext = np.flatnonzero(l < impulse_end)
-    else:
-        fill = np.flatnonzero(l <= limit)
-        ext = np.flatnonzero(h > impulse_end)
-    f = fill[0] if len(fill) else None
-    x = ext[0] if len(ext) else None
-    if x is not None and (f is None or x <= f):
-        k = x
-        new_end = l[: k + 1].min() if side < 0 else h[: k + 1].max()
-        return ("cancel", start + k, new_end)
-    if f is None:
-        return None
-    fi = start + f
-    if not m1.entry_ok[fi]:
-        return ("void", fi)
     stop, target = impulse_start, impulse_end
-    placed = m1.c[start - 1]
-    if f == 0 and ((placed >= limit) if side < 0 else (placed <= limit)):
-        entry = max(limit, o[0]) if side < 0 else min(limit, o[0])
-        if (entry >= stop) if side < 0 else (entry <= stop):
-            return ("void", fi)
+    p = m1.o[e]
+    if (p >= stop) if side < 0 else (p <= stop):
+        return ("void", e, False)
+    if (p >= limit) if side < 0 else (p <= limit):
+        fi, entry = e, p
+        if not (stop - entry) * -side > MIN_RISK * entry:
+            return ("void", e, False)
     else:
-        entry = limit
+        if not (stop - limit) * -side > MIN_RISK * limit:
+            return ("void", e, False)
+        end = m1.day_end[e]
+        h, l = m1.h[e:end + 1], m1.l[e:end + 1]
+        if side < 0:      # short: sell limit above, the impulse end is the low
+            fill, ext = h >= limit, l < impulse_end
+        else:
+            fill, ext = l <= limit, h > impulse_end
+        first = [(int(np.argmax(a)), rank) for rank, a in enumerate((~m1.entry_ok[e:end + 1], ext, fill)) if a.any()]
+        if not first:
+            return ("expire", end, True)
+        i, rank = min(first)
+        if rank == 0:
+            return ("void", e + i, True)
+        if rank == 1:
+            return ("cancel", e + i, l[: i + 1].min() if side < 0 else h[: i + 1].max())
+        fi, entry = e + i, limit
     if (m1.h[fi] >= stop) if side < 0 else (m1.l[fi] <= stop):
-        xi, px, why = fi, (max(stop, o[f]) if side < 0 else min(stop, o[f])), "stop"
+        xi, px, why = fi, (max(stop, m1.o[fi]) if side < 0 else min(stop, m1.o[fi])), "stop"
     else:
         xi, px, why = exit_trade(m1, side, fi + 1, stop, target, m1.day_end[fi])
     return {"kind": "fib", "side": side, "entry_i": fi, "entry": entry, "stop": stop, "target": target,
             "exit_i": xi, "exit": px, "reason": why}
 
 
-def _catch_up(st, side, b, upto):
-    """Apply the bars after st["seen"] up to `upto` to an impulse state (bars skipped during a trade)."""
-    a = st["seen"] + 1
-    if a > upto:
-        return
-    if side < 0:
-        if b.h[a:upto + 1].max() > st["start"]:
-            st["done"] = True
-        st["ext"] = min(st["ext"], b.l[a:upto + 1].min())
-        st["bos"] = st["bos"] or bool((b.c[a:upto + 1] < st["prev"]).any())
-    else:
-        if b.l[a:upto + 1].min() < st["start"]:
-            st["done"] = True
-        st["ext"] = max(st["ext"], b.h[a:upto + 1].max())
-        st["bos"] = st["bos"] or bool((b.c[a:upto + 1] > st["prev"]).any())
-    st["seen"] = upto
-
-
-def fib_pullback(m1, b, sw, ema_line=None, allow=None):
+def fib_pullback(m1, b, sw, ema_line=None, allow=None, hook=None, on_fill=None):
     """After a close beyond the swing before the last swing (break of structure), measure the impulse from that
     last swing to the running extreme; once price retraces 33 % of it, a limit at 0.618, stop at the impulse
-    start, target at the impulse end. `ema_line`: trade only on its side; `allow(side, m1_index)`: extra filter.
-    Each impulse gives at most one trade; one trade at a time."""
+    start, target at the impulse end. Each impulse gives at most one trade.
+
+    One order or trade at a time: while one runs, and in the bar in which it ends, no impulse triggers. The
+    impulse that placed an order is not updated until the order ends; a cancelled order (the impulse went on)
+    leaves the impulse measured to the new extreme. `ema_line`: trigger only on its side, else the impulse is
+    done. `allow(side, i)`: extra filter at the trigger bar (i its last 1-minute bar). `hook(k, cancel)`: called
+    in every bar before the triggers; cancel() withdraws a pending order. `on_fill(trade)`: called at a fill."""
     kind, idx, price, conf = sw
     trades = []
     last = {1: None, -1: None}            # last confirmed swing high / low: (idx, price)
     states = {}                           # side -> impulse state; side -1: down impulse from a swing high
+    run = None                            # the running order: owner state, result, bar in which it resolves
+    blocked = -1                          # bars up to this one: an order or trade was running
+    bar_of = lambda i: int(np.searchsorted(b.last, i))     # bar holding 1-minute bar i
+
+    def cancel_run(k):
+        nonlocal run, blocked
+        if run is not None:
+            run["owner"]["done"], run["owner"]["frozen"] = True, False
+            run, blocked = None, k
+
     j = 0
-    k = 0
-    while k < b.n:
+    for k in range(b.n):
+        if run is not None and run["at"] <= k:            # the running order fills or ends in this bar
+            st, res = run["owner"], run["res"]
+            st["frozen"] = False
+            if isinstance(res, dict):
+                trades.append(res)
+                if on_fill is not None:
+                    on_fill(res)
+                st["done"], blocked = True, bar_of(res["exit_i"])
+            elif res[0] == "cancel":                      # the impulse went on: measure it again later
+                st["ext"], st["resume"], blocked = res[2], k, k
+            else:
+                st["done"], blocked = True, k
+            run = None
         while j < len(conf) and conf[j] <= k:
             prev = last[-kind[j]]             # the swing before: its level is the structure to break
             last[kind[j]] = (idx[j], price[j])
             if prev is not None:
                 side, si, sp, level = (-1 if kind[j] == 1 else 1), idx[j], price[j], prev[1]
                 lo, hi, cl = b.l[si:k + 1], b.h[si:k + 1], b.c[si:k + 1]
-                states[side] = {"start": sp, "prev": level, "seen": k, "created": k, "resume": -1,
-                                "done": False,
+                states[side] = {"start": sp, "prev": level, "created": k, "resume": -1, "done": False,
+                                "frozen": False,
                                 "ext": lo.min() if side < 0 else hi.max(),
                                 "bos": bool((cl < level).any()) if side < 0 else bool((cl > level).any())}
             j += 1
-        nxt = k + 1
+        if hook is not None:
+            hook(k, lambda: cancel_run(k))
         for side, st in states.items():
-            if k <= st["resume"]:
+            if st["frozen"] or k <= st["resume"] or st["done"] or st["created"] == k:
                 continue
-            _catch_up(st, side, b, k - 1)
-            if st["done"] or st["created"] == k:
-                continue
-            st["seen"] = k
             if (b.h[k] > st["start"]) if side < 0 else (b.l[k] < st["start"]):
                 st["done"] = True
                 continue
@@ -369,7 +373,7 @@ def fib_pullback(m1, b, sw, ema_line=None, allow=None):
                 st["ext"] = b.l[k] if side < 0 else b.h[k]
             if not st["bos"] and ((b.c[k] < st["prev"]) if side < 0 else (b.c[k] > st["prev"])):
                 st["bos"] = True
-            if not st["bos"] or new_ext or nxt > k + 1:
+            if not st["bos"] or new_ext or run is not None or k <= blocked:
                 continue
             rng = (st["start"] - st["ext"]) * -side
             retr = (b.h[k] - st["ext"]) if side < 0 else (st["ext"] - b.l[k])
@@ -378,19 +382,15 @@ def fib_pullback(m1, b, sw, ema_line=None, allow=None):
             if ema_line is not None and not ((b.c[k] < ema_line[k]) if side < 0 else (b.c[k] > ema_line[k])):
                 st["done"] = True
                 continue
-            if allow is not None and not allow(side, b.last[k]):
+            e = b.last[k] + 1
+            if e >= m1.n or not m1.entry_ok[e] or (allow is not None and not allow(side, b.last[k])):
                 continue
-            res = _fib_order(m1, side, b.last[k] + 1, st["ext"], st["start"])
-            if isinstance(res, dict):
-                trades.append(res)
+            res = _fib_order(m1, side, e, st["ext"], st["start"])
+            if not isinstance(res, dict) and not res[-1]:   # no order placed
                 st["done"] = True
-                nxt = int(np.searchsorted(b.last, res["exit_i"])) + 1
-            elif res is not None and res[0] == "cancel":       # the impulse went on: measure it again later
-                st["ext"] = res[2]
-                st["seen"] = st["resume"] = int(np.searchsorted(b.last, res[1]))
-            else:
-                st["done"] = True
-        k = nxt
+                continue
+            st["frozen"] = True
+            run = {"owner": st, "res": res, "at": bar_of(res["entry_i"] if isinstance(res, dict) else res[1])}
     return trades
 
 
@@ -411,39 +411,37 @@ def one_at_a_time(trades, per_day=None):
 
 
 def day_plan(m1, m5, b1, sw1, r1, window="19-04", max_fib=3, max_trades=4):
-    """The video's day: Tokyo breakout sets the bias and is traded; Fibonacci pullbacks (1 minute) in the bias
-    direction until the first RSI divergence against it, which is traded as the last trade of the day."""
+    """The video's day: the Tokyo breakout sets the bias and is traded; Fibonacci pullbacks (1 minute) in the
+    bias direction, at most max_fib a day, until the first RSI divergence against it. That divergence withdraws
+    a pending Fibonacci order and is traded as the last trade of the day if the day has fewer than max_trades
+    trades and no Fibonacci trade is open."""
     tok = {m1.day[t["entry_i"]]: t for t in tokyo_breakout(m1, m5, window)}
-    rsi_all = rsi_divergence(m1, b1, sw1, r1, sauce=True)
-    counter = {}
-    for t in sorted(rsi_all, key=lambda x: x["entry_i"]):
+    rsi_at = {t["entry_i"] - 1: t for t in rsi_divergence(m1, b1, sw1, r1, sauce=True)}   # by decision bar
+    counter, fib_count, out = {}, {}, list(tok.values())
+    fib_open_until = [-1]
+
+    def on_fill(t):
+        d = m1.day[t["entry_i"]]
+        fib_count[d] = fib_count.get(d, 0) + 1
+        fib_open_until[0] = t["exit_i"]
+
+    def hook(k, cancel):
+        t = rsi_at.get(b1.last[k])
+        if t is None:
+            return
         d = m1.day[t["entry_i"]]
         if d in tok and t["side"] == -tok[d]["side"] and t["entry_i"] > tok[d]["entry_i"] and d not in counter:
             counter[d] = t
-    fib_count = {}
+            cancel()
+            if 1 + fib_count.get(d, 0) < max_trades and fib_open_until[0] < t["entry_i"]:
+                out.append(t)
 
     def allow(side, i):
-        d = m1.day[i]
-        if d not in tok or side != tok[d]["side"] or i <= tok[d]["entry_i"]:
-            return False
-        if d in counter and i >= counter[d]["entry_i"]:
-            return False
-        return fib_count.get(d, 0) < min(max_fib, max_trades - 1)
+        d = m1.day[i + 1]
+        return (d in tok and side == tok[d]["side"] and i > tok[d]["entry_i"] and d not in counter
+                and fib_count.get(d, 0) < min(max_fib, max_trades - 1))
 
-    fibs = []
-    for t in fib_pullback(m1, b1, sw1, allow=allow):
-        d = m1.day[t["entry_i"]]
-        if fib_count.get(d, 0) < min(max_fib, max_trades - 1):
-            fib_count[d] = fib_count.get(d, 0) + 1
-            fibs.append(t)
-    fibs = one_at_a_time(fibs)
-    out = list(tok.values()) + fibs
-    for d, t in counter.items():
-        n_day = 1 + sum(1 for f in fibs if m1.day[f["entry_i"]] == d)
-        busy = max([f["exit_i"] for f in fibs if m1.day[f["entry_i"]] == d], default=-1)
-        if n_day < max_trades and t["entry_i"] > busy:
-            out.append(t)
-    return out
+    return out + fib_pullback(m1, b1, sw1, allow=allow, hook=hook, on_fill=on_fill)
 
 
 # ---------------------------------------------------------------------------------------------- evaluation
