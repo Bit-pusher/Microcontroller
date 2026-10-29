@@ -8,6 +8,10 @@ getestet sind.
 Russell 2000, 2005 bis Mai 2020). Der EA ist zum Nachprüfen im Strategietester und auf einem Demokonto
 gedacht, nicht für echtes Geld.
 
+**Stand:** Die Regeln sind Trade für Trade gegen den Backtest geprüft (siehe unten). Den EA selbst konnte ich
+nicht kompilieren, weil die Cloud-Umgebung keinen MetaEditor hat. Fehler beim Kompilieren oder im Tester
+bitte melden.
+
 ## Dateien
 
 | Datei | Inhalt |
